@@ -30,7 +30,8 @@ autos fix <repo> "<feedback>" [--scope S] [--repro R] [--dry-run]
 (Claude Code in v0), runs the policy's gates locally, and only submits a pull
 request when everything passes — otherwise it falls back to a structured
 issue, as the policy directs. Submission always happens from your own account,
-after you approve the final diff. Requires `git`, `curl`, `gh`, and `claude`.
+after you approve the final diff. Requires `git`, `curl`, and `gh`; the
+Claude Code backend also needs `claude`, but the human backend does not.
 
 Status: v0.1 — protocol spec and working CLI, pre-announcement.
 
