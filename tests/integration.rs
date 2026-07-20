@@ -1,6 +1,7 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -71,6 +72,26 @@ backends:
             .current_dir(&self.root)
             .output()
             .unwrap()
+    }
+
+    fn autos_with_stdin(&self, args: &[&str], input: &str) -> Output {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_autos"))
+            .args(args)
+            .env("HOME", &self.home)
+            .env("TMPDIR", &self.temp)
+            .current_dir(&self.root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
     }
 
     fn repo_arg(&self) -> &str {
@@ -170,14 +191,17 @@ fn policy_reports_unusable_policy() {
 fn fix_dry_run_uses_custom_backend_without_network_or_claude() {
     let fixture = Fixture::new(Some(&policy("gates:\n  test: \"true\"\n")));
 
-    let output = fixture.autos(&[
-        "fix",
-        fixture.repo_arg(),
-        "update the fixture",
-        "--scope",
-        "docs",
-        "--dry-run",
-    ]);
+    let output = fixture.autos_with_stdin(
+        &[
+            "fix",
+            fixture.repo_arg(),
+            "update the fixture",
+            "--scope",
+            "docs",
+            "--dry-run",
+        ],
+        "y\n",
+    );
 
     assert_success(&output);
     let stderr = text(&output.stderr);
@@ -265,13 +289,16 @@ fn fix_enforces_weekly_limit_from_fake_home() {
 fn fix_stops_before_submission_when_a_gate_fails_for_a_local_repo() {
     let fixture = Fixture::new(Some(&policy("gates:\n  test: \"false\"\n")));
 
-    let output = fixture.autos(&[
-        "fix",
-        fixture.repo_arg(),
-        "update the fixture",
-        "--scope",
-        "docs",
-    ]);
+    let output = fixture.autos_with_stdin(
+        &[
+            "fix",
+            fixture.repo_arg(),
+            "update the fixture",
+            "--scope",
+            "docs",
+        ],
+        "y\n",
+    );
 
     assert_success(&output);
     let stderr = text(&output.stderr);
