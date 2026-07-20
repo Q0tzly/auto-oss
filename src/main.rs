@@ -46,7 +46,8 @@ enum Cmd {
         /// Reproduction steps (required by some policies for bug fixes)
         #[arg(long)]
         repro: Option<String>,
-        /// Agent backend used to generate the patch
+        /// Backend that produces the patch: claude-code, or `human` (you
+        /// edit the workdir yourself; gates and metadata work the same)
         #[arg(long, default_value = "claude-code")]
         backend: String,
         /// Stop after generating the patch and running gates; submit nothing

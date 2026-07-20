@@ -115,6 +115,9 @@ autos verify <pr-url>               # PR のメタデータブロックを検証
 やらない(将来):
 - `verify` の CI アクション化
 - 複数 backend(OpenHands / OpenCode)
+- policy の `accepts.paths`(触ってよい/いけないパスの宣言)。public 化して気づいた課題:
+  docs scope を許すと DESIGN.md のような「判断ログ」まで書き換え対象になる。
+  v0 では CONTRIBUTING.md の運用で防ぎ、パス制約は SPEC v1 候補にする
 - レートリミットの強制(v0 では宣言のみ)、署名によるメタデータ検証
 - GitHub 以外のフォージ(GitLab / Codeberg / Origin)対応 — SPEC 上は非依存を保つ
 

@@ -13,7 +13,8 @@ pub trait Backend {
 pub fn by_name(name: &str) -> Result<Box<dyn Backend>> {
     match name {
         "claude-code" => Ok(Box::new(ClaudeCode)),
-        other => bail!("unknown backend `{other}` (available: claude-code)"),
+        "human" => Ok(Box::new(Human)),
+        other => bail!("unknown backend `{other}` (available: claude-code, human)"),
     }
 }
 
@@ -33,6 +34,26 @@ impl Backend for ClaudeCode {
         if !status.success() {
             bail!("claude exited with {status}");
         }
+        Ok(())
+    }
+}
+
+/// You are the backend. Make the edits yourself; the rest of the pipeline
+/// (gates, metadata, submission) treats you exactly like any agent.
+struct Human;
+
+impl Backend for Human {
+    fn name(&self) -> &'static str {
+        "human"
+    }
+
+    fn generate(&self, workdir: &Path, prompt: &str) -> Result<()> {
+        eprintln!("==> backend `human`: make your changes now.\n");
+        eprintln!("{prompt}");
+        eprintln!("\n    workdir: {}", workdir.display());
+        eprint!("    Press Enter when your edits are done... ");
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).context("reading stdin")?;
         Ok(())
     }
 }

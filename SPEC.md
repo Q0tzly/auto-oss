@@ -138,8 +138,11 @@ Requirements:
   (credentials, personal data, private paths) MAY be redacted, and redactions
   MUST be visibly marked (e.g. `[redacted]`); the feedback MUST NOT be
   otherwise rewritten or summarized.
-- `agent` MUST disclose the backend that generated the patch. Submissions
-  produced without any agent involvement are out of scope for this protocol.
+- `agent` MUST disclose the backend that generated the patch. The disclosure
+  MUST be truthful: a patch written by hand declares the reserved backend
+  `human` rather than pretending an agent was involved. The protocol's
+  machinery — opt-in, gates, provenance — applies to human-made patches all
+  the same.
 - `gates` MUST report the result of every gate declared in the policy.
 - `human_reviewed` MUST be `true` if the policy requires human review; the
   submitting human is attesting, and false attestation is grounds for the
