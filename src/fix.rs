@@ -240,12 +240,23 @@ fn submit_pr(
     let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let branch = format!("auto-oss/{}-{ts}", args.scope);
 
-    eprintln!("==> forking {owner}/{name} (no-op if the fork exists)");
-    gh(&["repo", "fork", &format!("{owner}/{name}"), "--clone=false"])?;
+    // With push access (own repo, collaborator) the branch goes straight to
+    // upstream; a fork is only the outsider's route to a hosted branch.
+    let can_push = gh_out(&["api", &format!("repos/{owner}/{name}"), "-q", ".permissions.push"])
+        .map(|s| s.trim() == "true")
+        .unwrap_or(false);
+    let (push_repo, head) = if can_push {
+        eprintln!("==> push access to {owner}/{name}: branching directly, no fork");
+        (format!("{owner}/{name}"), branch.clone())
+    } else {
+        eprintln!("==> forking {owner}/{name} (no-op if the fork exists)");
+        gh(&["repo", "fork", &format!("{owner}/{name}"), "--clone=false"])?;
+        (format!("{login}/{name}"), format!("{login}:{branch}"))
+    };
 
     git(workdir, &["checkout", "-b", &branch])?;
     git(workdir, &["commit", "--quiet", "-m", title])?;
-    let push_url = format!("https://github.com/{login}/{name}.git");
+    let push_url = format!("https://github.com/{push_repo}.git");
     eprintln!("==> pushing {branch} to {push_url}");
     git(workdir, &["push", &push_url, &format!("HEAD:refs/heads/{branch}")])
         .context("push failed; if authentication failed, run `gh auth setup-git` once")?;
@@ -256,7 +267,7 @@ fn submit_pr(
         "--repo",
         &format!("{owner}/{name}"),
         "--head",
-        &format!("{login}:{branch}"),
+        &head,
         "--title",
         title,
         "--body-file",
@@ -270,7 +281,7 @@ fn submit_pr(
             "edit",
             "--repo",
             &format!("{owner}/{name}"),
-            &format!("{login}:{branch}"),
+            &head,
             "--add-label",
             label,
         ]);
