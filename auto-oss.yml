@@ -1,0 +1,13 @@
+version: 0
+
+accepts:
+  scopes: [docs, typo]
+  max_diff_lines: 200
+
+require:
+  human_review: true
+
+fallback: issue
+
+metadata:
+  label: "auto-oss"
