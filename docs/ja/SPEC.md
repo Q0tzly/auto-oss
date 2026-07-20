@@ -88,6 +88,9 @@ limits:
 metadata:
   # フォージがラベルに対応していれば、クライアントが付けるべき(SHOULD)ラベル。
   label: "auto-oss"
+  # クライアントが提出のタイトル・要約を書くべき(SHOULD)言語。
+  # 利用者のフィードバックは常に原文のまま運ばれ、翻訳されない。
+  language: "en"
 ```
 
 ### 2.1 フィールドの意味
@@ -103,6 +106,7 @@ metadata:
 | `fallback` | no(デフォルト `issue`) | パッチのパイプラインが失敗したときの動作。 |
 | `limits.per_author_per_week` | no | 提出者(人間)ごとの勧告レートリミット。 |
 | `metadata.label` | no | 提出に付けるラベル。 |
+| `metadata.language` | no | BCP 47 タグ。クライアントは提出のタイトルと要約をこの言語で書くべき(SHOULD)。`feedback` は言語に関わらず原文のままでなければならない(MUST)。 |
 
 パースに失敗する policy ファイルは不在として扱わなければならない(MUST。
 opt-in なし)。未知のフィールドは無視しなければならない(MUST。前方互換)。

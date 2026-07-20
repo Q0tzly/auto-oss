@@ -19,6 +19,11 @@ pub struct Generated {
 /// auto-oss never calls an LLM itself; it delegates patch generation here.
 pub trait Backend {
     fn name(&self) -> &str;
+    /// The model this backend was configured to use, disclosed in the
+    /// submission metadata. None when the backend picks its own.
+    fn model(&self) -> Option<&str> {
+        None
+    }
     fn generate(&self, workdir: &Path, prompt: &str) -> Result<Generated>;
 }
 
@@ -26,9 +31,12 @@ pub trait Backend {
 ///
 /// ```yaml
 /// default_backend: claude-code
+/// claude_code:
+///   model: claude-sonnet-5
 /// backends:
 ///   codex:
 ///     command: ["codex", "exec", "{prompt}"]
+///     model: gpt-5-codex
 /// ```
 ///
 /// Custom backends run in the clone's working directory with `{prompt}`
@@ -37,12 +45,24 @@ pub trait Backend {
 #[serde(default)]
 pub struct Config {
     pub default_backend: Option<String>,
+    pub claude_code: ClaudeCodeCfg,
     pub backends: BTreeMap<String, CustomBackendCfg>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct ClaudeCodeCfg {
+    /// Passed through to `claude --model`. None lets Claude Code decide.
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CustomBackendCfg {
     pub command: Vec<String>,
+    /// Recorded in the metadata for disclosure; auto-oss does not pass it to
+    /// the command (put it in `command` if the tool needs a flag).
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 pub fn config_path() -> Option<PathBuf> {
@@ -67,7 +87,9 @@ pub fn resolve(flag: Option<&str>, config: &Config) -> Result<Box<dyn Backend>> 
         .or_else(|| config.default_backend.clone())
         .unwrap_or_else(|| "claude-code".to_string());
     match name.as_str() {
-        "claude-code" => Ok(Box::new(ClaudeCode)),
+        "claude-code" => Ok(Box::new(ClaudeCode {
+            model: config.claude_code.model.clone(),
+        })),
         "human" => Ok(Box::new(Human)),
         other => {
             if let Some(cfg) = config.backends.get(other) {
@@ -80,6 +102,7 @@ pub fn resolve(flag: Option<&str>, config: &Config) -> Result<Box<dyn Backend>> 
                 Ok(Box::new(Custom {
                     name: other.to_string(),
                     command: cfg.command.clone(),
+                    model: cfg.model.clone(),
                 }))
             } else {
                 bail!(
@@ -91,26 +114,36 @@ pub fn resolve(flag: Option<&str>, config: &Config) -> Result<Box<dyn Backend>> 
     }
 }
 
-struct ClaudeCode;
+struct ClaudeCode {
+    model: Option<String>,
+}
 
 impl Backend for ClaudeCode {
     fn name(&self) -> &str {
         "claude-code"
     }
 
+    fn model(&self) -> Option<&str> {
+        self.model.as_deref()
+    }
+
     fn generate(&self, workdir: &Path, prompt: &str) -> Result<Generated> {
         // stream-json makes progress visible while the agent works; plain -p
         // is silent until the very end, which reads as a hang.
+        let mut args = vec![
+            "-p",
+            prompt,
+            "--permission-mode",
+            "acceptEdits",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+        ];
+        if let Some(model) = &self.model {
+            args.extend(["--model", model]);
+        }
         let mut child = Command::new("claude")
-            .args([
-                "-p",
-                prompt,
-                "--permission-mode",
-                "acceptEdits",
-                "--output-format",
-                "stream-json",
-                "--verbose",
-            ])
+            .args(&args)
             .current_dir(workdir)
             // The user's stdin belongs to the confirmation prompts, not to
             // the agent; claude treats piped stdin as prompt input.
@@ -257,11 +290,16 @@ impl Backend for Human {
 struct Custom {
     name: String,
     command: Vec<String>,
+    model: Option<String>,
 }
 
 impl Backend for Custom {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn model(&self) -> Option<&str> {
+        self.model.as_deref()
     }
 
     fn generate(&self, workdir: &Path, prompt: &str) -> Result<Generated> {
@@ -288,6 +326,7 @@ pub fn build_prompt(
     reproduction: Option<&str>,
     scope: &str,
     max_diff_lines: Option<u64>,
+    language: Option<&str>,
 ) -> String {
     let mut p = format!(
         "You are generating a patch for this repository on behalf of one of its users, \
@@ -314,6 +353,13 @@ pub fn build_prompt(
          summary of what you changed and why. Both will be shown to the \
          project's maintainers.\n",
     );
+    if let Some(lang) = language {
+        p.push_str(&format!(
+            "- Write the title and summary in the language the repository \
+             declared for submissions: `{lang}`. The user's feedback is quoted \
+             verbatim elsewhere and must not be translated.\n"
+        ));
+    }
     p
 }
 
@@ -344,6 +390,33 @@ mod tests {
         .unwrap();
         assert_eq!(resolve(Some("codex"), &config).unwrap().name(), "codex");
         assert!(resolve(Some("nonexistent"), &config).is_err());
+    }
+
+    #[test]
+    fn carries_configured_models_for_disclosure() {
+        let config: Config = serde_yaml::from_str(
+            "claude_code:\n  model: claude-sonnet-5\n\
+             backends:\n  codex:\n    command: [\"codex\", \"{prompt}\"]\n    model: gpt-5-codex\n",
+        )
+        .unwrap();
+        assert_eq!(
+            resolve(Some("claude-code"), &config).unwrap().model(),
+            Some("claude-sonnet-5")
+        );
+        assert_eq!(
+            resolve(Some("codex"), &config).unwrap().model(),
+            Some("gpt-5-codex")
+        );
+        assert_eq!(resolve(Some("human"), &config).unwrap().model(), None);
+    }
+
+    #[test]
+    fn injects_declared_language_into_prompt() {
+        let p = build_prompt("feedback", None, "bug-fix", None, Some("en"));
+        assert!(p.contains("language the repository"));
+        assert!(p.contains("`en`"));
+        let p = build_prompt("feedback", None, "bug-fix", None, None);
+        assert!(!p.contains("language the repository"));
     }
 
     #[test]

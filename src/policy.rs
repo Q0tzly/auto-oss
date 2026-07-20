@@ -76,6 +76,9 @@ pub struct Limits {
 #[serde(default)]
 pub struct MetadataCfg {
     pub label: Option<String>,
+    /// Language the client SHOULD use for submission titles and summaries
+    /// (e.g. "en"). The feedback itself always stays verbatim.
+    pub language: Option<String>,
 }
 
 /// Where a target repository lives.
@@ -244,6 +247,7 @@ limits:
   per_author_per_week: 3
 metadata:
   label: "auto-oss"
+  language: "en"
 "#;
         let p = parse(raw).unwrap();
         assert_eq!(p.accepts.max_diff_lines, Some(300));

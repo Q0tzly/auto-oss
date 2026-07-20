@@ -38,7 +38,7 @@ cargo install auto-oss   # `autos` バイナリが入る
 
 | オプション | デフォルト | 意味 |
 |---|---|---|
-| `--scope <s>` | `bug-fix` | 変更カテゴリ。policy の `accepts.scopes` にあること |
+| `--scope <s>` | `bug-fix` | 変更カテゴリ。policy の `accepts.scopes` にあること。`bug-fix` 以外に `docs`・`typo`・`test`・`refactor`・`feature` があり、不具合修正ではなく機能提案をするときは `feature` を使う |
 | `--repro <text>` | — | 再現手順。`require.reproduction` の policy ではバグ修正に必須 |
 | `--backend <b>` | config の `default_backend`、なければ `claude-code` | パッチ生成役: `claude-code`・`human`・config の custom backend |
 | `--dry-run` | off | ゲートとプレビューまでで停止。何も提出しない |
@@ -87,15 +87,31 @@ cargo install auto-oss   # `autos` バイナリが入る
 ```yaml
 default_backend: claude-code
 
+claude_code:
+  model: claude-sonnet-5   # `claude --model` に渡る。省略時は Claude Code に任せる
+
 backends:
   codex:
     command: ["codex", "exec", "{prompt}"]
+    model: gpt-5-codex     # メタデータへの開示用。コマンドには渡らない
 ```
 
 custom backend は clone 内で実行される任意のコマンドで、`{prompt}` が
 置換される。ファイルを編集して exit 0 することが期待される。`{prompt}` は
 **独立した argv 要素として**書くこと — シェル文字列の中に埋め込むと
 プロンプトの改行で壊れる(クォートの罠でもある)。
+
+設定したモデルは提出メタデータの `agent.model` に記録され、メンテナが
+「何がこのパッチを作ったか」を見られる。custom backend では開示のみで、
+ツール側にフラグが必要なら `command` に書くこと。
+
+### 並列実行
+
+`fix` の各実行は独立している: それぞれ自分の workdir に clone し、自分の
+status ファイルを書き、自分のブランチ(名前にタイムスタンプと pid が入る)を
+push する。別々の端末で、異なるリポジトリにも同じリポジトリにも並列で走らせ
+られる。注意点は 2 つ: `limits.per_author_per_week` は全実行を合算して数える
+ことと、各実行が承認プロンプトのために端末を必要とすること(=端末を分ける)。
 
 ### `autos init [--force]`
 

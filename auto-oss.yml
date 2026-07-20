@@ -1,8 +1,8 @@
 version: 0
 
 accepts:
-  scopes: [bug-fix, docs, typo]
-  max_diff_lines: 200
+  scopes: [bug-fix, docs, typo, feature, refactor]
+  max_diff_lines: 300
 
 gates:
   build: "cargo build"
@@ -17,3 +17,4 @@ fallback: issue
 
 metadata:
   label: "auto-oss"
+  language: "en"

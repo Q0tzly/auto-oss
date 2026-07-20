@@ -85,6 +85,9 @@ limits:
 metadata:
   # Label the client SHOULD apply to submissions, if the forge supports labels.
   label: "auto-oss"
+  # Language the client SHOULD write submission titles and summaries in.
+  # The user's feedback is always carried verbatim and is never translated.
+  language: "en"
 ```
 
 ### 2.1 Field semantics
@@ -100,6 +103,7 @@ metadata:
 | `fallback` | no (default `issue`) | Behavior when the patch pipeline fails. |
 | `limits.per_author_per_week` | no | Advisory rate limit per submitting human. |
 | `metadata.label` | no | Label for submissions. |
+| `metadata.language` | no | BCP 47 tag. Clients SHOULD write the submission title and summary in this language. The `feedback` field MUST stay verbatim regardless. |
 
 A policy file that fails to parse MUST be treated as absent (no opt-in).
 Unknown fields MUST be ignored (forward compatibility).

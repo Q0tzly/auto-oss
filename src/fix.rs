@@ -63,6 +63,7 @@ pub fn run(args: FixArgs) -> Result<()> {
         args.repro.as_deref(),
         &args.scope,
         policy.accepts.max_diff_lines,
+        policy.metadata.language.as_deref(),
     );
     let generated = match backend.generate(&workdir, &prompt) {
         Ok(g) => g,
@@ -110,6 +111,7 @@ pub fn run(args: FixArgs) -> Result<()> {
     let body = submission_body(
         &args,
         backend.name(),
+        backend.model(),
         generated.summary.as_deref(),
         &gate_results,
         qualified,
@@ -220,16 +222,23 @@ fn record_submission(repo: &RepoRef) -> Result<()> {
         std::fs::create_dir_all(dir)?;
     }
     let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-    let mut content = std::fs::read_to_string(&log).unwrap_or_default();
-    content.push_str(&format!("{ts}\t{}\n", repo.short_name()));
-    std::fs::write(&log, content)?;
+    // Append rather than read-modify-write: concurrent `fix` runs would
+    // otherwise clobber each other's entries. A single short line is written
+    // atomically by every platform we target.
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log)?;
+    writeln!(file, "{ts}\t{}", repo.short_name())?;
     Ok(())
 }
 
+/// The pid keeps concurrent runs against the same repository in the same
+/// second from colliding — in the work directory and in the branch name.
 fn make_workdir(repo: &RepoRef) -> Result<PathBuf> {
     let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let slug = repo.short_name().replace('/', "-");
-    let dir = std::env::temp_dir().join(format!("auto-oss-{slug}-{ts}"));
+    let dir = std::env::temp_dir().join(format!("auto-oss-{slug}-{ts}-{}", std::process::id()));
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
 }
@@ -263,6 +272,7 @@ fn truncate_chars(s: &str, max_bytes: usize) -> String {
 fn submission_body(
     args: &FixArgs,
     backend_name: &str,
+    model: Option<&str>,
     summary: Option<&str>,
     gate_results: &[(String, GateResult)],
     qualified: bool,
@@ -273,6 +283,7 @@ fn submission_body(
         feedback: &args.feedback,
         reproduction: args.repro.as_deref(),
         backend: backend_name,
+        model,
         gates: gate_results,
         human_reviewed: true,
     });
@@ -363,7 +374,7 @@ fn submit_pr(
 ) -> Result<()> {
     let login = gh_out(&["api", "user", "-q", ".login"])?.trim().to_string();
     let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-    let branch = format!("auto-oss/{}-{ts}", args.scope);
+    let branch = format!("auto-oss/{}-{ts}-{}", args.scope, std::process::id());
 
     // With push access (own repo, collaborator) the branch goes straight to
     // upstream; a fork is only the outsider's route to a hosted branch.

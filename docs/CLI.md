@@ -39,7 +39,7 @@ The main pipeline: turn feedback into a policy-gated submission.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--scope <s>` | `bug-fix` | Change category; must be listed in the policy's `accepts.scopes` |
+| `--scope <s>` | `bug-fix` | Change category; must be listed in the policy's `accepts.scopes`. Beyond `bug-fix`: `docs`, `typo`, `test`, `refactor`, and `feature` — use `feature` to propose an enhancement rather than fix a defect |
 | `--repro <text>` | — | Reproduction steps; required by policies with `require.reproduction` for bug fixes |
 | `--backend <b>` | config `default_backend`, else `claude-code` | Patch producer: `claude-code`, `human`, or a custom backend from the config |
 | `--dry-run` | off | Stop after gates and preview; submit nothing |
@@ -94,15 +94,32 @@ with their current phase (`cloning`, `generating`, `gates`,
 ```yaml
 default_backend: claude-code
 
+claude_code:
+  model: claude-sonnet-5   # passed to `claude --model`; omit to let it choose
+
 backends:
   codex:
     command: ["codex", "exec", "{prompt}"]
+    model: gpt-5-codex     # disclosed in metadata; not passed to the command
 ```
 
 Custom backends are arbitrary commands run inside the clone with `{prompt}`
 substituted; they are expected to edit files and exit 0. Keep `{prompt}` as
 its own argv element — interpolating it into a shell string breaks on the
 prompt's newlines (and is a quoting hazard).
+
+A configured model is recorded as `agent.model` in the submission metadata,
+so maintainers can see what produced a patch. For custom backends the field
+is disclosure only — if the tool needs a flag, put it in `command`.
+
+### Running several fixes at once
+
+`fix` runs are independent: each clones into its own work directory, writes
+its own status file, and pushes its own branch (names carry a timestamp and
+pid). You can run one per terminal against different repositories, or
+against the same one. Two caveats: a repository's `limits.per_author_per_week`
+counts submissions across all of them, and each run wants your terminal for
+its approval prompt — so keep them in separate terminals.
 
 ### `autos init [--force]`
 

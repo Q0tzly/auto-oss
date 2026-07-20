@@ -5,6 +5,7 @@ pub struct Submission<'a> {
     pub feedback: &'a str,
     pub reproduction: Option<&'a str>,
     pub backend: &'a str,
+    pub model: Option<&'a str>,
     pub gates: &'a [(String, GateResult)],
     pub human_reviewed: bool,
 }
@@ -25,6 +26,9 @@ pub fn render_block(s: &Submission) -> String {
     ));
     out.push_str("agent:\n");
     out.push_str(&format!("  backend: {}\n", s.backend));
+    if let Some(model) = s.model {
+        out.push_str(&format!("  model: {model}\n"));
+    }
     if !s.gates.is_empty() {
         out.push_str("gates:\n");
         for (name, result) in s.gates {
@@ -59,6 +63,7 @@ mod tests {
             feedback: "panics on empty input",
             reproduction: Some("run `foo` with no args"),
             backend: "claude-code",
+            model: None,
             gates: &gates,
             human_reviewed: true,
         });
@@ -77,6 +82,7 @@ mod tests {
             feedback: "text with --> inside",
             reproduction: None,
             backend: "claude-code",
+            model: None,
             gates: &[],
             human_reviewed: true,
         });

@@ -41,7 +41,15 @@ impl RunTracker {
             started: ts,
             updated: ts,
         };
-        let path = runs_dir().map(|d| d.join(format!("{ts}-{}.json", repo.replace('/', "-"))));
+        // pid in the filename: two concurrent runs against the same
+        // repository in the same second must not share a status file.
+        let path = runs_dir().map(|d| {
+            d.join(format!(
+                "{ts}-{}-{}.json",
+                repo.replace('/', "-"),
+                std::process::id()
+            ))
+        });
         let tracker = Self { path, state };
         tracker.write();
         tracker

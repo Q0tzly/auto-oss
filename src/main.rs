@@ -134,6 +134,9 @@ fn show_policy(repo: &str) -> Result<()> {
             if let Some(label) = &policy.metadata.label {
                 println!("  label:         {label}");
             }
+            if let Some(lang) = &policy.metadata.language {
+                println!("  language:      {lang} (titles and summaries)");
+            }
         }
     }
     Ok(())
