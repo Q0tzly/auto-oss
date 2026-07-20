@@ -22,7 +22,7 @@ Ordinary contributions are welcome. `cargo test` and
 `cargo clippy --all-targets -- -D warnings` must pass.
 
 This repository itself accepts submissions under the auto-oss protocol — see
-[auto-oss.yml](auto-oss.yml) for the policy. Trying `autos fix` on this repo
+[auto-oss.yml](../auto-oss.yml) for the policy. Trying `autos fix` on this repo
 is encouraged; that is what dogfooding means.
 
 ## Licensing

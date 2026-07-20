@@ -11,9 +11,9 @@ works for the repository's *owners*. auto-oss is the other direction: the
 agent-made contributions arrive in a form maintainers can trust — opt-in only,
 quality-gated, disclosed, and always with a human as the author of record.
 
-- [SPEC.md](SPEC.md) — protocol specification (v0 draft): the `auto-oss.yml`
-  policy file and the submission metadata block
-- [DESIGN.md](DESIGN.md) — design notes and rationale (Japanese)
+- [docs/SPEC.md](docs/SPEC.md) — protocol specification (v0 draft): the
+  `auto-oss.yml` policy file and the submission metadata block
+- [docs/DESIGN.md](docs/DESIGN.md) — design notes and rationale (Japanese)
 
 ## Reference CLI: `autos`
 
@@ -22,8 +22,9 @@ Installing the `auto-oss` crate gives you the `autos` command:
 ```
 autos policy <repo>   # show a repository's acceptance policy (or that it has none)
 autos init            # generate an auto-oss.yml for your repository
-autos fix <repo> "<feedback>" [--scope S] [--repro R] [--dry-run]
+autos fix <repo> "<feedback>" [--scope S] [--repro R] [--backend B] [--dry-run]
                       # feedback -> agent patch -> policy gates -> human review -> PR
+autos verify <pr-url> # check a PR's metadata block against the policy (CI-friendly)
 ```
 
 `fix` clones the target, delegates patch generation to an agent backend
@@ -45,11 +46,11 @@ command `autos` carries the root directly.
 
 ## License
 
-- The specification ([SPEC.md](SPEC.md)) is licensed under
+- The specification ([docs/SPEC.md](docs/SPEC.md)) is licensed under
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- Everything else in this repository (including the reference CLI, once it
-  exists) is dual-licensed under [MIT](LICENSE-MIT) or
-  [Apache-2.0](LICENSE-APACHE), at your option.
+- Everything else in this repository (including the reference CLI) is
+  dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE),
+  at your option.
 
 Unless you explicitly state otherwise, any contribution intentionally
 submitted for inclusion in this repository by you shall be licensed as above
