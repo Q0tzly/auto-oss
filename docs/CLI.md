@@ -71,6 +71,11 @@ The pipeline, in order:
 
 Local repositories run the same pipeline but stop before submission.
 
+Declared `limits.per_author_per_week` are self-enforced, as SPEC §4 asks:
+submissions are logged locally in `~/.auto-oss/submissions.tsv`, and `fix`
+refuses to start when the rolling seven-day count for the target repository
+has reached the limit.
+
 ### `autos init [--force]`
 
 Maintainer side: interactively generate an `auto-oss.yml` for the current

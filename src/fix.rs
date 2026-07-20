@@ -39,6 +39,9 @@ pub fn run(args: FixArgs) -> Result<()> {
     };
 
     validate_request(&policy, &args)?;
+    if !args.dry_run {
+        enforce_limit(&policy, &repo)?;
+    }
     let backend = backend::by_name(&args.backend)?;
 
     let workdir = make_workdir(&repo)?;
@@ -114,7 +117,10 @@ pub fn run(args: FixArgs) -> Result<()> {
     };
 
     if !qualified {
-        return submit_fallback(&policy, owner, name, &title, &body_path);
+        if submit_fallback(&policy, owner, name, &title, &body_path)? {
+            record_submission(&repo)?;
+        }
+        return Ok(());
     }
 
     if !confirm("Review the diff and preview above. Submit this pull request?")? {
@@ -124,10 +130,14 @@ pub fn run(args: FixArgs) -> Result<()> {
         );
         return Ok(());
     }
-    submit_pr(&policy, owner, name, &args, &workdir, &title, &body_path)
+    submit_pr(&policy, owner, name, &args, &workdir, &title, &body_path)?;
+    record_submission(&repo)
 }
 
 fn validate_request(policy: &Policy, args: &FixArgs) -> Result<()> {
+    if args.feedback.trim().is_empty() {
+        bail!("feedback must not be empty; it is the provenance of the whole submission");
+    }
     if !policy.accepts.scopes.iter().any(|s| s == &args.scope) {
         bail!(
             "scope `{}` is not accepted by this repository (accepted: {})",
@@ -138,6 +148,48 @@ fn validate_request(policy: &Policy, args: &FixArgs) -> Result<()> {
     if policy.require.reproduction && args.scope == "bug-fix" && args.repro.is_none() {
         bail!("this repository requires reproduction steps for bug fixes; pass --repro");
     }
+    Ok(())
+}
+
+/// SPEC §4: clients SHOULD respect declared limits without server-side
+/// enforcement. Submissions are logged locally, one `epoch<TAB>repo` line
+/// per submission, and counted over a rolling week.
+fn submission_log() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".auto-oss").join("submissions.tsv"))
+}
+
+fn enforce_limit(policy: &Policy, repo: &RepoRef) -> Result<()> {
+    let (Some(limit), Some(log)) = (policy.limits.per_author_per_week, submission_log()) else {
+        return Ok(());
+    };
+    let week_ago = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() - 7 * 24 * 3600;
+    let name = repo.short_name();
+    let recent = std::fs::read_to_string(&log)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.split_once('\t'))
+        .filter(|(ts, r)| ts.parse::<u64>().is_ok_and(|t| t >= week_ago) && *r == name)
+        .count() as u64;
+    if recent >= limit {
+        bail!(
+            "{name} declares a limit of {limit} submission(s) per author per week and you \
+             have made {recent} in the last 7 days; try again later"
+        );
+    }
+    Ok(())
+}
+
+fn record_submission(repo: &RepoRef) -> Result<()> {
+    let Some(log) = submission_log() else {
+        return Ok(());
+    };
+    if let Some(dir) = log.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let mut content = std::fs::read_to_string(&log).unwrap_or_default();
+    content.push_str(&format!("{ts}\t{}\n", repo.short_name()));
+    std::fs::write(&log, content)?;
     Ok(())
 }
 
@@ -201,17 +253,18 @@ fn submission_body(
     }
 }
 
+/// Returns whether something was actually submitted.
 fn submit_fallback(
     policy: &Policy,
     owner: &str,
     name: &str,
     title: &str,
     body_path: &Path,
-) -> Result<()> {
+) -> Result<bool> {
     match policy.fallback {
         Fallback::None => {
             eprintln!("==> submission did not qualify and fallback is `none`; stopping");
-            Ok(())
+            Ok(false)
         }
         Fallback::Discussion => {
             eprintln!(
@@ -219,27 +272,30 @@ fn submit_fallback(
                  the prepared body is at {}",
                 body_path.display()
             );
-            Ok(())
+            Ok(false)
         }
         Fallback::Issue => {
             if !confirm("Patch did not qualify for a PR. Submit the report as an issue instead?")? {
                 eprintln!("==> aborted; nothing submitted");
-                return Ok(());
+                return Ok(false);
             }
-            let mut cmd_args = vec![
-                "issue".to_string(),
-                "create".to_string(),
-                "--repo".to_string(),
-                format!("{owner}/{name}"),
-                "--title".to_string(),
-                title.to_string(),
-                "--body-file".to_string(),
-                body_path.display().to_string(),
-            ];
+            let url = gh_out(&[
+                "issue",
+                "create",
+                "--repo",
+                &format!("{owner}/{name}"),
+                "--title",
+                title,
+                "--body-file",
+                &body_path.display().to_string(),
+            ])?;
+            let url = url.trim();
+            eprintln!("{url}");
             if let Some(label) = &policy.metadata.label {
-                cmd_args.extend(["--label".to_string(), label.clone()]);
+                // Best effort: the label may not exist in the target repository.
+                let _ = gh(&["issue", "edit", url, "--add-label", label]);
             }
-            gh(&cmd_args.iter().map(String::as_str).collect::<Vec<_>>())
+            Ok(true)
         }
     }
 }

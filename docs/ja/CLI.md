@@ -67,6 +67,10 @@ cargo install auto-oss   # `autos` バイナリが入る
 
 ローカルリポジトリでも同じパイプラインが走るが、提出の手前で停止する。
 
+宣言された `limits.per_author_per_week` は SPEC §4 の求める通り自主遵守される:
+提出は `~/.auto-oss/submissions.tsv` にローカル記録され、対象リポジトリへの
+直近 7 日間の提出数が上限に達していると `fix` は開始を拒否する。
+
 ### `autos init [--force]`
 
 メンテナ側: カレントディレクトリに `auto-oss.yml` を対話式で生成する。
