@@ -1,11 +1,17 @@
 version: 0
 
 accepts:
-  scopes: [docs, typo]
+  scopes: [bug-fix, docs, typo]
   max_diff_lines: 200
+
+gates:
+  build: "cargo build"
+  test: "cargo test"
+  lint: "cargo clippy --all-targets -- -D warnings"
 
 require:
   human_review: true
+  reproduction: true
 
 fallback: issue
 
