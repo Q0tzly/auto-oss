@@ -41,24 +41,29 @@ The main pipeline: turn feedback into a policy-gated submission.
 |---|---|---|
 | `--scope <s>` | `bug-fix` | Change category; must be listed in the policy's `accepts.scopes` |
 | `--repro <text>` | — | Reproduction steps; required by policies with `require.reproduction` for bug fixes |
-| `--backend <b>` | `claude-code` | Patch producer: `claude-code` or `human` |
+| `--backend <b>` | config `default_backend`, else `claude-code` | Patch producer: `claude-code`, `human`, or a custom backend from the config |
 | `--dry-run` | off | Stop after gates and preview; submit nothing |
 
 The pipeline, in order:
 
 1. **Policy discovery.** No opt-in → the command refuses and stops. The
    requested scope is validated against the policy before any work happens.
-   The complete gate list and the untrusted-repository warning are then shown;
-   an explicit `y` is required before cloning or executing anything.
 2. **Clone** into a fresh temporary work directory.
-3. **Patch generation** by the backend. `claude-code` runs Claude Code
-   non-interactively with the feedback, scope, and size limit injected as
-   constraints. `human` prints the constraints and waits while you edit the
-   work directory yourself.
+3. **Patch generation** by the backend. `claude-code` runs Claude Code with
+   the feedback, scope, and size limit injected as constraints, streaming
+   its progress (tool calls, commentary) to your terminal as it works.
+   `human` prints the constraints and waits while you edit the work
+   directory yourself. The backend also proposes the submission's **title**
+   (`human` asks you for one) and its account of what changed goes in the
+   body under "What changed"; your original feedback is quoted verbatim
+   under "Original feedback". When the backend offers no title, the first
+   line of the feedback is used, truncated. Titles are always prefixed with
+   the scope.
 4. **Size check.** A diff exceeding `accepts.max_diff_lines` is downgraded
    to the policy's fallback.
-5. **Gates.** Every command declared under `gates.*` runs in the clone.
-   Output streams to your terminal.
+5. **Gates.** Every command declared under `gates.*` is shown after patch
+   generation. An explicit `y` is required immediately before the commands
+   run in the clone; output streams to your terminal.
 6. **Preview and confirmation.** The full diff, gate results, and the exact
    submission body (with its metadata block) are shown; nothing is submitted
    without your explicit `y`. With `--dry-run` the command stops here.
@@ -77,6 +82,28 @@ Declared `limits.per_author_per_week` are self-enforced, as SPEC §4 asks:
 submissions are logged locally in `~/.auto-oss/submissions.tsv`, and `fix`
 refuses to start when the rolling seven-day count for the target repository
 has reached the limit.
+
+### `autos status`
+
+List recent `fix` runs — including ones still running in another terminal —
+with their current phase (`cloning`, `generating`, `awaiting-gate-approval`,
+`gates`, `awaiting-approval`, `submitted-pr`, …). Run files live in
+`~/.auto-oss/runs/` and are pruned after seven days.
+
+### Configuration: `~/.auto-oss/config.yml`
+
+```yaml
+default_backend: claude-code
+
+backends:
+  codex:
+    command: ["codex", "exec", "{prompt}"]
+```
+
+Custom backends are arbitrary commands run inside the clone with `{prompt}`
+substituted; they are expected to edit files and exit 0. Keep `{prompt}` as
+its own argv element — interpolating it into a shell string breaks on the
+prompt's newlines (and is a quoting hazard).
 
 ### `autos init [--force]`
 

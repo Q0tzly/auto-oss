@@ -9,13 +9,14 @@ use crate::backend;
 use crate::gates::{self, GateResult};
 use crate::metadata::{self, Submission};
 use crate::policy::{self, Fallback, Policy, PolicyStatus, RepoRef};
+use crate::status::RunTracker;
 
 pub struct FixArgs {
     pub repo: String,
     pub feedback: String,
     pub scope: String,
     pub repro: Option<String>,
-    pub backend: String,
+    pub backend: Option<String>,
     pub dry_run: bool,
 }
 
@@ -39,35 +40,42 @@ pub fn run(args: FixArgs) -> Result<()> {
     };
 
     validate_request(&policy, &args)?;
-    if !confirm_policy_execution(&policy)? {
-        eprintln!("==> aborted before cloning; nothing was executed or submitted");
-        return Ok(());
-    }
     if !args.dry_run {
         enforce_limit(&policy, &repo)?;
     }
-    let backend = backend::by_name(&args.backend)?;
+    let config = backend::load_config()?;
+    let backend = backend::resolve(args.backend.as_deref(), &config)?;
 
     let workdir = make_workdir(&repo)?;
+    let mut tracker = RunTracker::start(&repo.short_name(), &workdir);
     eprintln!(
         "==> cloning {} into {}",
         repo.short_name(),
         workdir.display()
     );
+    tracker.set("cloning");
     git(&workdir, &["clone", "--quiet", &repo.clone_url(), "."])?;
 
     eprintln!("==> generating patch with {}", backend.name());
+    tracker.set("generating");
     let prompt = backend::build_prompt(
         &args.feedback,
         args.repro.as_deref(),
         &args.scope,
         policy.accepts.max_diff_lines,
     );
-    backend.generate(&workdir, &prompt)?;
+    let generated = match backend.generate(&workdir, &prompt) {
+        Ok(g) => g,
+        Err(e) => {
+            tracker.set("failed");
+            return Err(e);
+        }
+    };
 
     git(&workdir, &["add", "-A"])?;
     let diff = git_out(&workdir, &["diff", "--cached"])?;
     if diff.trim().is_empty() {
+        tracker.set("failed");
         bail!("backend produced no changes; nothing to submit");
     }
     let changed = diff_lines(&diff);
@@ -93,12 +101,31 @@ pub fn run(args: FixArgs) -> Result<()> {
             .map(|k| (k.clone(), GateResult::Skipped))
             .collect()
     } else {
+        if !policy.gates.is_empty() {
+            tracker.set("awaiting-gate-approval");
+            if !confirm_gate_execution(&policy)? {
+                tracker.set("aborted");
+                eprintln!(
+                    "==> aborted before gates; nothing submitted (workdir kept at {})",
+                    workdir.display()
+                );
+                return Ok(());
+            }
+        }
+        tracker.set("gates");
         gates::run_all(&policy.gates, &workdir)?
     };
     let qualified = !oversized && gates::all_pass(&gate_results);
 
-    let title = pr_title(&args);
-    let body = submission_body(&args, &gate_results, qualified, &diff);
+    let title = pr_title(&args, generated.title.as_deref());
+    let body = submission_body(
+        &args,
+        backend.name(),
+        generated.summary.as_deref(),
+        &gate_results,
+        qualified,
+        &diff,
+    );
     let body_path = workdir.join(".auto-oss-body.md");
     std::fs::write(&body_path, &body)?;
 
@@ -108,6 +135,7 @@ pub fn run(args: FixArgs) -> Result<()> {
     eprintln!("------------------------------");
 
     if args.dry_run {
+        tracker.set("dry-run-done");
         eprintln!("==> dry run: stopping before submission");
         eprintln!("    workdir: {}", workdir.display());
         eprintln!("    body:    {}", body_path.display());
@@ -115,26 +143,38 @@ pub fn run(args: FixArgs) -> Result<()> {
     }
 
     let RepoRef::GitHub { owner, repo: name } = &repo else {
+        tracker.set("dry-run-done");
         eprintln!("==> local repository: submission not applicable; review the diff in place");
         eprintln!("    workdir: {}", workdir.display());
         return Ok(());
     };
 
     if !qualified {
+        tracker.set("awaiting-approval");
         if submit_fallback(&policy, owner, name, &title, &body_path)? {
+            tracker.set("submitted-issue");
             record_submission(&repo)?;
+        } else {
+            tracker.set("aborted");
         }
         return Ok(());
     }
 
+    tracker.set("awaiting-approval");
     if !confirm("Review the diff and preview above. Submit this pull request?")? {
+        tracker.set("aborted");
         eprintln!(
             "==> aborted; nothing submitted (workdir kept at {})",
             workdir.display()
         );
         return Ok(());
     }
-    submit_pr(&policy, owner, name, &args, &workdir, &title, &body_path)?;
+    tracker.set("submitting");
+    if let Err(e) = submit_pr(&policy, owner, name, &args, &workdir, &title, &body_path) {
+        tracker.set("failed");
+        return Err(e);
+    }
+    tracker.set("submitted-pr");
     record_submission(&repo)
 }
 
@@ -161,18 +201,17 @@ fn validate_request(policy: &Policy, args: &FixArgs) -> Result<()> {
     Ok(())
 }
 
-fn confirm_policy_execution(policy: &Policy) -> Result<bool> {
-    eprintln!("\n==> repository-controlled execution plan");
+fn confirm_gate_execution(policy: &Policy) -> Result<bool> {
     if policy.gates.is_empty() {
-        eprintln!("    gates: none declared");
-    } else {
-        for (name, command) in &policy.gates {
-            eprintln!("    gate {name}: {command}");
-        }
+        return Ok(true);
     }
-    eprintln!("    The clone is untrusted input to the backend.");
-    eprintln!("    Any declared gate runs as a shell command on this machine.");
-    confirm("Continue with this repository?")
+
+    eprintln!("\n==> repository-controlled gates");
+    for (name, command) in &policy.gates {
+        eprintln!("    {name}: {command}");
+    }
+    eprintln!("    Every gate above runs as a shell command on this machine.");
+    confirm("Run these gates?")
 }
 
 /// SPEC §4: clients SHOULD respect declared limits without server-side
@@ -225,29 +264,36 @@ fn make_workdir(repo: &RepoRef) -> Result<PathBuf> {
     Ok(dir)
 }
 
-fn pr_title(args: &FixArgs) -> String {
-    let mut summary = args
-        .feedback
-        .lines()
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    if summary.len() > 60 {
-        let cut = summary
-            .char_indices()
-            .take_while(|(i, _)| *i <= 57)
-            .last()
-            .map(|(i, c)| i + c.len_utf8())
-            .unwrap_or(0);
-        summary.truncate(cut);
-        summary.push('…');
-    }
+/// Prefer the backend's title; fall back to truncated feedback. The scope
+/// prefix stays either way — it is how auto-oss submissions read at a
+/// glance in a PR list. The user's raw feedback always travels in the body.
+fn pr_title(args: &FixArgs, backend_title: Option<&str>) -> String {
+    let summary = match backend_title {
+        Some(t) => truncate_chars(t.trim(), 80),
+        None => truncate_chars(args.feedback.lines().next().unwrap_or("").trim(), 60),
+    };
     format!("{}: {}", args.scope, summary)
+}
+
+fn truncate_chars(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_string();
+    }
+    let cut = s
+        .char_indices()
+        .take_while(|(i, _)| *i <= max_bytes - 3)
+        .last()
+        .map(|(i, c)| i + c.len_utf8())
+        .unwrap_or(0);
+    let mut out = s[..cut].to_string();
+    out.push('…');
+    out
 }
 
 fn submission_body(
     args: &FixArgs,
+    backend_name: &str,
+    summary: Option<&str>,
     gate_results: &[(String, GateResult)],
     qualified: bool,
     diff: &str,
@@ -256,19 +302,31 @@ fn submission_body(
         scope: &args.scope,
         feedback: &args.feedback,
         reproduction: args.repro.as_deref(),
-        backend: &args.backend,
+        backend: backend_name,
         gates: gate_results,
         human_reviewed: true,
     });
+    let summary_section = summary
+        .map(|s| format!("## What changed\n\n{s}\n\n"))
+        .unwrap_or_default();
+    let feedback_section = format!(
+        "## Original feedback\n\n{}\n\n",
+        args.feedback
+            .lines()
+            .map(|l| format!("> {l}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
     if qualified {
         format!(
-            "This patch was generated from a user's feedback under the \
+            "{summary_section}{feedback_section}This patch was generated from a user's \
+             feedback under the \
              [auto-oss protocol](https://github.com/q0tzly/auto-oss), following this \
              repository's `auto-oss.yml` policy. A human reviewed it before submission.\n\n{block}\n"
         )
     } else {
         format!(
-            "This report was collected under the \
+            "{summary_section}{feedback_section}This report was collected under the \
              [auto-oss protocol](https://github.com/q0tzly/auto-oss). A patch was attempted \
              but did not qualify for a pull request under this repository's policy; the \
              partial diff is attached for reference.\n\n{block}\n\n\
@@ -474,10 +532,10 @@ mod tests {
             feedback: "あ".repeat(40),
             scope: "docs".into(),
             repro: None,
-            backend: "claude-code".into(),
+            backend: None,
             dry_run: true,
         };
-        let title = pr_title(&args);
+        let title = pr_title(&args, None);
         assert!(title.starts_with("docs: あ"));
         assert!(title.ends_with('…'));
     }
@@ -493,7 +551,7 @@ mod tests {
             feedback: "  ".into(),
             scope: "bug-fix".into(),
             repro: None,
-            backend: "human".into(),
+            backend: None,
             dry_run: true,
         };
         assert!(validate_request(&policy, &args).is_err());
@@ -501,5 +559,21 @@ mod tests {
         args.feedback = "it fails".into();
         args.repro = Some("  ".into());
         assert!(validate_request(&policy, &args).is_err());
+    }
+
+    #[test]
+    fn prefers_backend_title_over_feedback() {
+        let args = FixArgs {
+            repo: String::new(),
+            feedback: "raw user words that make a poor title".into(),
+            scope: "bug-fix".into(),
+            repro: None,
+            backend: None,
+            dry_run: true,
+        };
+        assert_eq!(
+            pr_title(&args, Some("Handle empty config without panicking")),
+            "bug-fix: Handle empty config without panicking"
+        );
     }
 }

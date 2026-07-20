@@ -40,21 +40,26 @@ cargo install auto-oss   # `autos` バイナリが入る
 |---|---|---|
 | `--scope <s>` | `bug-fix` | 変更カテゴリ。policy の `accepts.scopes` にあること |
 | `--repro <text>` | — | 再現手順。`require.reproduction` の policy ではバグ修正に必須 |
-| `--backend <b>` | `claude-code` | パッチ生成役: `claude-code` または `human` |
+| `--backend <b>` | config の `default_backend`、なければ `claude-code` | パッチ生成役: `claude-code`・`human`・config の custom backend |
 | `--dry-run` | off | ゲートとプレビューまでで停止。何も提出しない |
 
 パイプラインの順序:
 
 1. **policy 発見。** opt-in なし → 拒否して終了。要求 scope は作業前に
-   policy と照合される。続いて全ゲートと untrusted repository の警告を表示し、
-   明示的な `y` が入力されるまで clone もコマンド実行も行わない。
+   policy と照合される。
 2. **clone** — 新規の一時 workdir へ。
 3. **パッチ生成** — backend が行う。`claude-code` はフィードバック・scope・
-   サイズ上限を制約として注入し Claude Code を非対話実行。`human` は制約を
-   表示し、あなたが workdir を直接編集する間待つ。
+   サイズ上限を制約として注入して Claude Code を実行し、作業中の進捗
+   (ツール呼び出し・コメント)を端末にストリーム表示する。`human` は制約を
+   表示し、あなたが workdir を直接編集する間待つ。backend は提出の
+   **タイトル**も提案する(`human` は入力を求める)。変更内容の説明は本文の
+   「What changed」に、あなたの元のフィードバックは「Original feedback」に
+   原文引用で載る。backend がタイトルを返さない場合はフィードバックの先頭行を
+   切り詰めて使う。タイトルには常に scope の接頭辞が付く。
 4. **サイズ検査。** `accepts.max_diff_lines` を超える diff は policy の
    fallback に格下げ。
-5. **ゲート。** `gates.*` の全コマンドを clone 内で実行。出力は端末に流れる。
+5. **ゲート。** パッチ生成後に `gates.*` の全コマンドを表示し、実行直前に
+   明示的な `y` を要求する。同意後、clone 内で実行し、出力は端末に流れる。
 6. **プレビューと確認。** 全 diff・ゲート結果・提出本文(メタデータブロック
    込み)を提示。明示的な `y` なしには何も提出されない。`--dry-run` はここで
    停止。
@@ -71,6 +76,28 @@ cargo install auto-oss   # `autos` バイナリが入る
 宣言された `limits.per_author_per_week` は SPEC §4 の求める通り自主遵守される:
 提出は `~/.auto-oss/submissions.tsv` にローカル記録され、対象リポジトリへの
 直近 7 日間の提出数が上限に達していると `fix` は開始を拒否する。
+
+### `autos status`
+
+最近の `fix` の実行(別の端末で進行中のものを含む)を、現在のフェーズ
+(`cloning`、`generating`、`awaiting-gate-approval`、`gates`、
+`awaiting-approval`、`submitted-pr` …)
+付きで一覧する。記録は `~/.auto-oss/runs/` にあり、7 日で削除される。
+
+### 設定: `~/.auto-oss/config.yml`
+
+```yaml
+default_backend: claude-code
+
+backends:
+  codex:
+    command: ["codex", "exec", "{prompt}"]
+```
+
+custom backend は clone 内で実行される任意のコマンドで、`{prompt}` が
+置換される。ファイルを編集して exit 0 することが期待される。`{prompt}` は
+**独立した argv 要素として**書くこと — シェル文字列の中に埋め込むと
+プロンプトの改行で壊れる(クォートの罠でもある)。
 
 ### `autos init [--force]`
 
