@@ -41,7 +41,7 @@ The main pipeline: turn feedback into a policy-gated submission.
 |---|---|---|
 | `--scope <s>` | `bug-fix` | Change category; must be listed in the policy's `accepts.scopes` |
 | `--repro <text>` | — | Reproduction steps; required by policies with `require.reproduction` for bug fixes |
-| `--backend <b>` | `claude-code` | Patch producer: `claude-code` or `human` |
+| `--backend <b>` | config `default_backend`, else `claude-code` | Patch producer: `claude-code`, `human`, or a custom backend from the config |
 | `--dry-run` | off | Stop after gates and preview; submit nothing |
 
 The pipeline, in order:
@@ -49,10 +49,13 @@ The pipeline, in order:
 1. **Policy discovery.** No opt-in → the command refuses and stops. The
    requested scope is validated against the policy before any work happens.
 2. **Clone** into a fresh temporary work directory.
-3. **Patch generation** by the backend. `claude-code` runs Claude Code
-   non-interactively with the feedback, scope, and size limit injected as
-   constraints. `human` prints the constraints and waits while you edit the
-   work directory yourself.
+3. **Patch generation** by the backend. `claude-code` runs Claude Code with
+   the feedback, scope, and size limit injected as constraints, streaming
+   its progress (tool calls, commentary) to your terminal as it works.
+   `human` prints the constraints and waits while you edit the work
+   directory yourself. The backend's account of what it changed — Claude's
+   final summary, or the description you type for `human` — is placed in
+   the submission body under "What changed".
 4. **Size check.** A diff exceeding `accepts.max_diff_lines` is downgraded
    to the policy's fallback.
 5. **Gates.** Every command declared under `gates.*` runs in the clone.
@@ -75,6 +78,28 @@ Declared `limits.per_author_per_week` are self-enforced, as SPEC §4 asks:
 submissions are logged locally in `~/.auto-oss/submissions.tsv`, and `fix`
 refuses to start when the rolling seven-day count for the target repository
 has reached the limit.
+
+### `autos status`
+
+List recent `fix` runs — including ones still running in another terminal —
+with their current phase (`cloning`, `generating`, `gates`,
+`awaiting-approval`, `submitted-pr`, …). Run files live in
+`~/.auto-oss/runs/` and are pruned after seven days.
+
+### Configuration: `~/.auto-oss/config.yml`
+
+```yaml
+default_backend: claude-code
+
+backends:
+  codex:
+    command: ["codex", "exec", "{prompt}"]
+```
+
+Custom backends are arbitrary commands run inside the clone with `{prompt}`
+substituted; they are expected to edit files and exit 0. Keep `{prompt}` as
+its own argv element — interpolating it into a shell string breaks on the
+prompt's newlines (and is a quoting hazard).
 
 ### `autos init [--force]`
 

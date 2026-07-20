@@ -9,13 +9,14 @@ use crate::backend;
 use crate::gates::{self, GateResult};
 use crate::metadata::{self, Submission};
 use crate::policy::{self, Fallback, Policy, PolicyStatus, RepoRef};
+use crate::status::RunTracker;
 
 pub struct FixArgs {
     pub repo: String,
     pub feedback: String,
     pub scope: String,
     pub repro: Option<String>,
-    pub backend: String,
+    pub backend: Option<String>,
     pub dry_run: bool,
 }
 
@@ -42,28 +43,39 @@ pub fn run(args: FixArgs) -> Result<()> {
     if !args.dry_run {
         enforce_limit(&policy, &repo)?;
     }
-    let backend = backend::by_name(&args.backend)?;
+    let config = backend::load_config()?;
+    let backend = backend::resolve(args.backend.as_deref(), &config)?;
 
     let workdir = make_workdir(&repo)?;
+    let mut tracker = RunTracker::start(&repo.short_name(), &workdir);
     eprintln!(
         "==> cloning {} into {}",
         repo.short_name(),
         workdir.display()
     );
+    tracker.set("cloning");
     git(&workdir, &["clone", "--quiet", &repo.clone_url(), "."])?;
 
     eprintln!("==> generating patch with {}", backend.name());
+    tracker.set("generating");
     let prompt = backend::build_prompt(
         &args.feedback,
         args.repro.as_deref(),
         &args.scope,
         policy.accepts.max_diff_lines,
     );
-    backend.generate(&workdir, &prompt)?;
+    let summary = match backend.generate(&workdir, &prompt) {
+        Ok(s) => s,
+        Err(e) => {
+            tracker.set("failed");
+            return Err(e);
+        }
+    };
 
     git(&workdir, &["add", "-A"])?;
     let diff = git_out(&workdir, &["diff", "--cached"])?;
     if diff.trim().is_empty() {
+        tracker.set("failed");
         bail!("backend produced no changes; nothing to submit");
     }
     let changed = diff_lines(&diff);
@@ -89,12 +101,20 @@ pub fn run(args: FixArgs) -> Result<()> {
             .map(|k| (k.clone(), GateResult::Skipped))
             .collect()
     } else {
+        tracker.set("gates");
         gates::run_all(&policy.gates, &workdir)?
     };
     let qualified = !oversized && gates::all_pass(&gate_results);
 
     let title = pr_title(&args);
-    let body = submission_body(&args, &gate_results, qualified, &diff);
+    let body = submission_body(
+        &args,
+        backend.name(),
+        summary.as_deref(),
+        &gate_results,
+        qualified,
+        &diff,
+    );
     let body_path = workdir.join(".auto-oss-body.md");
     std::fs::write(&body_path, &body)?;
 
@@ -104,6 +124,7 @@ pub fn run(args: FixArgs) -> Result<()> {
     eprintln!("------------------------------");
 
     if args.dry_run {
+        tracker.set("dry-run-done");
         eprintln!("==> dry run: stopping before submission");
         eprintln!("    workdir: {}", workdir.display());
         eprintln!("    body:    {}", body_path.display());
@@ -111,26 +132,38 @@ pub fn run(args: FixArgs) -> Result<()> {
     }
 
     let RepoRef::GitHub { owner, repo: name } = &repo else {
+        tracker.set("dry-run-done");
         eprintln!("==> local repository: submission not applicable; review the diff in place");
         eprintln!("    workdir: {}", workdir.display());
         return Ok(());
     };
 
     if !qualified {
+        tracker.set("awaiting-approval");
         if submit_fallback(&policy, owner, name, &title, &body_path)? {
+            tracker.set("submitted-issue");
             record_submission(&repo)?;
+        } else {
+            tracker.set("aborted");
         }
         return Ok(());
     }
 
+    tracker.set("awaiting-approval");
     if !confirm("Review the diff and preview above. Submit this pull request?")? {
+        tracker.set("aborted");
         eprintln!(
             "==> aborted; nothing submitted (workdir kept at {})",
             workdir.display()
         );
         return Ok(());
     }
-    submit_pr(&policy, owner, name, &args, &workdir, &title, &body_path)?;
+    tracker.set("submitting");
+    if let Err(e) = submit_pr(&policy, owner, name, &args, &workdir, &title, &body_path) {
+        tracker.set("failed");
+        return Err(e);
+    }
+    tracker.set("submitted-pr");
     record_submission(&repo)
 }
 
@@ -224,6 +257,8 @@ fn pr_title(args: &FixArgs) -> String {
 
 fn submission_body(
     args: &FixArgs,
+    backend_name: &str,
+    summary: Option<&str>,
     gate_results: &[(String, GateResult)],
     qualified: bool,
     diff: &str,
@@ -232,19 +267,22 @@ fn submission_body(
         scope: &args.scope,
         feedback: &args.feedback,
         reproduction: args.repro.as_deref(),
-        backend: &args.backend,
+        backend: backend_name,
         gates: gate_results,
         human_reviewed: true,
     });
+    let summary_section = summary
+        .map(|s| format!("## What changed\n\n{s}\n\n"))
+        .unwrap_or_default();
     if qualified {
         format!(
-            "This patch was generated from a user's feedback under the \
+            "{summary_section}This patch was generated from a user's feedback under the \
              [auto-oss protocol](https://github.com/q0tzly/auto-oss), following this \
              repository's `auto-oss.yml` policy. A human reviewed it before submission.\n\n{block}\n"
         )
     } else {
         format!(
-            "This report was collected under the \
+            "{summary_section}This report was collected under the \
              [auto-oss protocol](https://github.com/q0tzly/auto-oss). A patch was attempted \
              but did not qualify for a pull request under this repository's policy; the \
              partial diff is attached for reference.\n\n{block}\n\n\
@@ -450,7 +488,7 @@ mod tests {
             feedback: "あ".repeat(40),
             scope: "docs".into(),
             repro: None,
-            backend: "claude-code".into(),
+            backend: None,
             dry_run: true,
         };
         let title = pr_title(&args);

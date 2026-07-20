@@ -27,6 +27,7 @@ autos init            # generate an auto-oss.yml for your repository
 autos fix <repo> "<feedback>" [--scope S] [--repro R] [--backend B] [--dry-run]
                       # feedback -> agent patch -> policy gates -> human review -> PR
 autos verify <pr-url> # check a PR's metadata block against the policy (CI-friendly)
+autos status          # list recent and in-progress fix runs
 ```
 
 `fix` clones the target, delegates patch generation to an agent backend

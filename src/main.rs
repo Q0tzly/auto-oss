@@ -4,6 +4,7 @@ mod gates;
 mod init_cmd;
 mod metadata;
 mod policy;
+mod status;
 mod verify;
 
 use anyhow::Result;
@@ -47,10 +48,12 @@ enum Cmd {
         /// Reproduction steps (required by some policies for bug fixes)
         #[arg(long)]
         repro: Option<String>,
-        /// Backend that produces the patch: claude-code, or `human` (you
-        /// edit the workdir yourself; gates and metadata work the same)
-        #[arg(long, default_value = "claude-code")]
-        backend: String,
+        /// Backend that produces the patch: claude-code, `human` (you edit
+        /// the workdir yourself), or a custom backend from
+        /// ~/.auto-oss/config.yml. Defaults to the config's
+        /// `default_backend`, else claude-code.
+        #[arg(long)]
+        backend: Option<String>,
         /// Stop after generating the patch and running gates; submit nothing
         #[arg(long)]
         dry_run: bool,
@@ -60,6 +63,8 @@ enum Cmd {
         /// GitHub pull request URL
         pr: String,
     },
+    /// Show recent and in-progress fix runs
+    Status,
 }
 
 fn main() -> Result<()> {
@@ -67,6 +72,7 @@ fn main() -> Result<()> {
         Cmd::Policy { repo } => show_policy(&repo),
         Cmd::Init { force } => init_cmd::run(force),
         Cmd::Verify { pr } => verify::run(&pr),
+        Cmd::Status => status::run(),
         Cmd::Fix {
             repo,
             feedback,
