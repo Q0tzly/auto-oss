@@ -60,7 +60,14 @@ fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::Policy { repo } => show_policy(&repo),
         Cmd::Init { force } => init_cmd::run(force),
-        Cmd::Fix { repo, feedback, scope, repro, backend, dry_run } => fix::run(fix::FixArgs {
+        Cmd::Fix {
+            repo,
+            feedback,
+            scope,
+            repro,
+            backend,
+            dry_run,
+        } => fix::run(fix::FixArgs {
             repo,
             feedback,
             scope,
@@ -89,7 +96,11 @@ fn show_policy(repo: &str) -> Result<()> {
             );
         }
         PolicyStatus::OptedIn { policy, found_at } => {
-            println!("{}: opted in via `{found_at}` (spec v{})", repo.short_name(), policy.version);
+            println!(
+                "{}: opted in via `{found_at}` (spec v{})",
+                repo.short_name(),
+                policy.version
+            );
             println!("  scopes:        {}", policy.accepts.scopes.join(", "));
             if let Some(max) = policy.accepts.max_diff_lines {
                 println!("  max diff:      {max} lines");

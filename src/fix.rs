@@ -42,7 +42,11 @@ pub fn run(args: FixArgs) -> Result<()> {
     let backend = backend::by_name(&args.backend)?;
 
     let workdir = make_workdir(&repo)?;
-    eprintln!("==> cloning {} into {}", repo.short_name(), workdir.display());
+    eprintln!(
+        "==> cloning {} into {}",
+        repo.short_name(),
+        workdir.display()
+    );
     git(&workdir, &["clone", "--quiet", &repo.clone_url(), "."])?;
 
     eprintln!("==> generating patch with {}", backend.name());
@@ -76,7 +80,11 @@ pub fn run(args: FixArgs) -> Result<()> {
     }
 
     let gate_results = if oversized {
-        policy.gates.keys().map(|k| (k.clone(), GateResult::Skipped)).collect()
+        policy
+            .gates
+            .keys()
+            .map(|k| (k.clone(), GateResult::Skipped))
+            .collect()
     } else {
         gates::run_all(&policy.gates, &workdir)?
     };
@@ -110,7 +118,10 @@ pub fn run(args: FixArgs) -> Result<()> {
     }
 
     if !confirm("Review the diff and preview above. Submit this pull request?")? {
-        eprintln!("==> aborted; nothing submitted (workdir kept at {})", workdir.display());
+        eprintln!(
+            "==> aborted; nothing submitted (workdir kept at {})",
+            workdir.display()
+        );
         return Ok(());
     }
     submit_pr(&policy, owner, name, &args, &workdir, &title, &body_path)
@@ -139,7 +150,13 @@ fn make_workdir(repo: &RepoRef) -> Result<PathBuf> {
 }
 
 fn pr_title(args: &FixArgs) -> String {
-    let mut summary = args.feedback.lines().next().unwrap_or("").trim().to_string();
+    let mut summary = args
+        .feedback
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
     if summary.len() > 60 {
         let cut = summary
             .char_indices()
@@ -242,9 +259,14 @@ fn submit_pr(
 
     // With push access (own repo, collaborator) the branch goes straight to
     // upstream; a fork is only the outsider's route to a hosted branch.
-    let can_push = gh_out(&["api", &format!("repos/{owner}/{name}"), "-q", ".permissions.push"])
-        .map(|s| s.trim() == "true")
-        .unwrap_or(false);
+    let can_push = gh_out(&[
+        "api",
+        &format!("repos/{owner}/{name}"),
+        "-q",
+        ".permissions.push",
+    ])
+    .map(|s| s.trim() == "true")
+    .unwrap_or(false);
     let (push_repo, head) = if can_push {
         eprintln!("==> push access to {owner}/{name}: branching directly, no fork");
         (format!("{owner}/{name}"), branch.clone())
@@ -258,8 +280,11 @@ fn submit_pr(
     git(workdir, &["commit", "--quiet", "-m", title])?;
     let push_url = format!("https://github.com/{push_repo}.git");
     eprintln!("==> pushing {branch} to {push_url}");
-    git(workdir, &["push", &push_url, &format!("HEAD:refs/heads/{branch}")])
-        .context("push failed; if authentication failed, run `gh auth setup-git` once")?;
+    git(
+        workdir,
+        &["push", &push_url, &format!("HEAD:refs/heads/{branch}")],
+    )
+    .context("push failed; if authentication failed, run `gh auth setup-git` once")?;
 
     gh(&[
         "pr",
@@ -317,13 +342,20 @@ fn git(dir: &Path, args: &[&str]) -> Result<()> {
 fn git_out(dir: &Path, args: &[&str]) -> Result<String> {
     let out = Command::new("git").args(args).current_dir(dir).output()?;
     if !out.status.success() {
-        bail!("git {} failed: {}", args.join(" "), String::from_utf8_lossy(&out.stderr));
+        bail!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 fn gh(args: &[&str]) -> Result<()> {
-    let status = Command::new("gh").args(args).status().context("running gh")?;
+    let status = Command::new("gh")
+        .args(args)
+        .status()
+        .context("running gh")?;
     if !status.success() {
         bail!("gh {} failed", args.join(" "));
     }
@@ -331,9 +363,16 @@ fn gh(args: &[&str]) -> Result<()> {
 }
 
 fn gh_out(args: &[&str]) -> Result<String> {
-    let out = Command::new("gh").args(args).output().context("running gh")?;
+    let out = Command::new("gh")
+        .args(args)
+        .output()
+        .context("running gh")?;
     if !out.status.success() {
-        bail!("gh {} failed: {}", args.join(" "), String::from_utf8_lossy(&out.stderr));
+        bail!(
+            "gh {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }

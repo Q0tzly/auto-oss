@@ -56,7 +56,9 @@ impl Backend for Human {
         eprintln!("\n    workdir: {}", workdir.display());
         eprint!("    Press Enter when your edits are done... ");
         let mut line = String::new();
-        std::io::stdin().read_line(&mut line).context("reading stdin")?;
+        std::io::stdin()
+            .read_line(&mut line)
+            .context("reading stdin")?;
         Ok(())
     }
 }

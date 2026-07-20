@@ -27,15 +27,18 @@ pub fn run(force: bool) -> Result<()> {
     let test = ask("Test gate command (empty to skip)", "")?;
     let lint = ask("Lint gate command (empty to skip)", "")?;
     let repro = ask("Require reproduction steps for bug fixes? (y/n)", "y")?;
-    let fallback = ask("Fallback when a patch does not qualify (issue/none)", "issue")?;
+    let fallback = ask(
+        "Fallback when a patch does not qualify (issue/none)",
+        "issue",
+    )?;
     let label = ask("Label for submissions (empty to skip)", "auto-oss")?;
 
     let mut out = String::from("version: 0\n\naccepts:\n");
     out.push_str(&format!("  scopes: [{}]\n", scopes.join(", ")));
     if !max_diff.is_empty() {
-        let n: u64 = max_diff.parse().map_err(|_| {
-            anyhow::anyhow!("max changed lines must be a number, got `{max_diff}`")
-        })?;
+        let n: u64 = max_diff
+            .parse()
+            .map_err(|_| anyhow::anyhow!("max changed lines must be a number, got `{max_diff}`"))?;
         out.push_str(&format!("  max_diff_lines: {n}\n"));
     }
     let gates: Vec<(&str, &String)> = [("build", &build), ("test", &test), ("lint", &lint)]
@@ -75,5 +78,9 @@ fn ask(question: &str, default: &str) -> Result<String> {
     let mut line = String::new();
     io::stdin().lock().read_line(&mut line)?;
     let answer = line.trim();
-    Ok(if answer.is_empty() { default.to_string() } else { answer.to_string() })
+    Ok(if answer.is_empty() {
+        default.to_string()
+    } else {
+        answer.to_string()
+    })
 }

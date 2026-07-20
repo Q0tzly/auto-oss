@@ -40,7 +40,10 @@ pub struct Require {
 
 impl Default for Require {
     fn default() -> Self {
-        Self { human_review: true, reproduction: false }
+        Self {
+            human_review: true,
+            reproduction: false,
+        }
     }
 }
 
@@ -154,8 +157,14 @@ pub fn discover(repo: &RepoRef) -> Result<PolicyStatus> {
             }
         };
         return Ok(match parse(&raw) {
-            Ok(policy) => PolicyStatus::OptedIn { policy, found_at: rel.to_string() },
-            Err(e) => PolicyStatus::Unusable { found_at: rel.to_string(), reason: e.to_string() },
+            Ok(policy) => PolicyStatus::OptedIn {
+                policy,
+                found_at: rel.to_string(),
+            },
+            Err(e) => PolicyStatus::Unusable {
+                found_at: rel.to_string(),
+                reason: e.to_string(),
+            },
         });
     }
     Ok(PolicyStatus::NotOptedIn)
@@ -242,7 +251,10 @@ metadata:
     #[test]
     fn ignores_unknown_fields() {
         let p = parse("version: 0\nfuture_field: 1\naccepts:\n  scopes: [docs]\n");
-        assert!(p.is_ok(), "unknown fields must be ignored for forward compatibility");
+        assert!(
+            p.is_ok(),
+            "unknown fields must be ignored for forward compatibility"
+        );
     }
 
     #[test]
@@ -257,7 +269,11 @@ metadata:
 
     #[test]
     fn parses_repo_refs() {
-        for s in ["owner/name", "https://github.com/owner/name", "git@github.com:owner/name.git"] {
+        for s in [
+            "owner/name",
+            "https://github.com/owner/name",
+            "git@github.com:owner/name.git",
+        ] {
             match RepoRef::parse(s).unwrap() {
                 RepoRef::GitHub { owner, repo } => {
                     assert_eq!(owner, "owner");

@@ -18,7 +18,11 @@ pub fn render_block(s: &Submission) -> String {
         push_block_scalar(&mut out, "reproduction", repro);
     }
     out.push_str("environment:\n");
-    out.push_str(&format!("  os: {} ({})\n", std::env::consts::OS, std::env::consts::ARCH));
+    out.push_str(&format!(
+        "  os: {} ({})\n",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    ));
     out.push_str("agent:\n");
     out.push_str(&format!("  backend: {}\n", s.backend));
     if !s.gates.is_empty() {
@@ -76,6 +80,10 @@ mod tests {
             gates: &[],
             human_reviewed: true,
         });
-        assert_eq!(block.matches("-->").count(), 1, "only the closing tag may appear");
+        assert_eq!(
+            block.matches("-->").count(),
+            1,
+            "only the closing tag may appear"
+        );
     }
 }

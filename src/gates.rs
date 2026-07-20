@@ -33,7 +33,11 @@ pub fn run_all(gates: &BTreeMap<String, String>, dir: &Path) -> Result<Vec<(Stri
             .current_dir(dir)
             .status()
             .with_context(|| format!("running gate `{name}`"))?;
-        let result = if status.success() { GateResult::Pass } else { GateResult::Fail };
+        let result = if status.success() {
+            GateResult::Pass
+        } else {
+            GateResult::Fail
+        };
         eprintln!("==> gate `{name}`: {result}");
         results.push((name.clone(), result));
     }

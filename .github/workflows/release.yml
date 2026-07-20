@@ -1,0 +1,29 @@
+name: Release
+
+# Publishing is tag-driven, not merge-driven: pushing a v* tag is the
+# explicit "this is a release" act, and the version in Cargo.toml has
+# already been bumped in the change itself.
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Uses crates.io Trusted Publishing (OIDC): configure this repository
+    # and workflow under the crate's Settings -> Trusted Publishing on
+    # crates.io. No long-lived token is stored anywhere.
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
