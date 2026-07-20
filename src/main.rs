@@ -12,7 +12,7 @@ use policy::{PolicyStatus, RepoRef};
 
 #[derive(Parser)]
 #[command(
-    name = "auto-oss",
+    name = "autos",
     version,
     about = "Client for the auto-oss protocol: user-side agent contributions to opted-in repositories"
 )]

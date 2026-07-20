@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["oss", "agent", "contribution", "protocol", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 
+[[bin]]
+name = "autos"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

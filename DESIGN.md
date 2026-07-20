@@ -73,6 +73,12 @@ AI 生成 PR の洪水はすでにメンテナに嫌われている(curl の AI 
   途中まで作ったパッチは価値がある。policy の `fallback` に従い構造化 Issue として提出する。
 - 「必ず PR」ではなく「PR は品質が保証できたときだけ」がスパム対策の核心。
 
+### 名前: プロトコルは auto-oss、コマンドは autos
+- `autos` はギリシャ語 αὐτός(自分自身・自らの意思で)。プロジェクトの核心(本人が自らの意思で動く)を表す。
+- ただし英語圏で "autos" は「自動車」なので、検索されるべきプロトコル名には使えない。
+- 分担: プロトコル / リポジトリ / crate = `auto-oss`(検索可能)、バイナリ = `autos`(打ちやすい)。
+  ripgrep → `rg` と同じ慣行。語源は README の Name 節でブランドの資産として使う。
+
 ### 実装言語は Rust
 - 単一バイナリで配布しやすく、利用者のマシンで動く CLI に向く。
 - パッチ生成は外部エージェントに委譲するので、auto-oss 本体は I/O とオーケストレーションのみ。重い依存は不要。
@@ -81,14 +87,14 @@ AI 生成 PR の洪水はすでにメンテナに嫌われている(curl の AI 
 
 ```
 # 利用者側
-auto-oss policy <repo>              # 対象リポジトリの受け入れ条件を表示(opt-in してるか)
-auto-oss fix <repo> "<feedback>"    # 本体: policy 取得 → パッチ生成 → ゲート → 確認 → PR
-auto-oss fix --dry-run ...          # PR 作成の手前(diff 提示)まで
-auto-oss status                     # 進行中/提出済みの貢献の一覧
+autos policy <repo>                 # 対象リポジトリの受け入れ条件を表示(opt-in してるか)
+autos fix <repo> "<feedback>"       # 本体: policy 取得 → パッチ生成 → ゲート → 確認 → PR
+autos fix --dry-run ...             # PR 作成の手前(diff 提示)まで
+autos status                        # 進行中/提出済みの貢献の一覧
 
 # メンテナ側
-auto-oss init                       # 対話的に auto-oss.yml を生成
-auto-oss verify <pr-url>            # PR のメタデータブロックを検証(CI に組める)
+autos init                          # 対話的に auto-oss.yml を生成
+autos verify <pr-url>               # PR のメタデータブロックを検証(CI に組める)
 ```
 
 `fix` の内部フロー:

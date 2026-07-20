@@ -15,13 +15,15 @@ quality-gated, disclosed, and always with a human as the author of record.
   policy file and the submission metadata block
 - [DESIGN.md](DESIGN.md) — design notes and rationale (Japanese)
 
-## Reference CLI
+## Reference CLI: `autos`
+
+Installing the `auto-oss` crate gives you the `autos` command:
 
 ```
-auto-oss policy <repo>   # show a repository's acceptance policy (or that it has none)
-auto-oss init            # generate an auto-oss.yml for your repository
-auto-oss fix <repo> "<feedback>" [--scope S] [--repro R] [--dry-run]
-                         # feedback -> agent patch -> policy gates -> human review -> PR
+autos policy <repo>   # show a repository's acceptance policy (or that it has none)
+autos init            # generate an auto-oss.yml for your repository
+autos fix <repo> "<feedback>" [--scope S] [--repro R] [--dry-run]
+                      # feedback -> agent patch -> policy gates -> human review -> PR
 ```
 
 `fix` clones the target, delegates patch generation to an agent backend
@@ -31,6 +33,14 @@ issue, as the policy directs. Submission always happens from your own account,
 after you approve the final diff. Requires `git`, `curl`, `gh`, and `claude`.
 
 Status: v0.1 — protocol spec and working CLI, pre-announcement.
+
+## Name
+
+The *auto-* in auto-oss is not automation's *auto*. It is Greek **αὐτός** —
+*self, of one's own will* — the same root that gave *automatos*, "acting of
+its own accord". That is the point of the protocol: the person who feels the
+problem acts on it, of their own will, through their own agent. The CLI
+command `autos` carries the root directly.
 
 ## License
 
