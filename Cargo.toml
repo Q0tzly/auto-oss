@@ -1,6 +1,6 @@
 [package]
 name = "auto-oss"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "Reference CLI for the auto-oss protocol: user-side agent contributions to opted-in repositories"
 license = "MIT OR Apache-2.0"

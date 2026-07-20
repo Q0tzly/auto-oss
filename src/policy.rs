@@ -150,7 +150,13 @@ pub fn discover(repo: &RepoRef) -> Result<PolicyStatus> {
             }
             RepoRef::GitHub { owner, repo } => {
                 let url = format!("https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{rel}");
-                match fetch(&url)? {
+                let fetched = fetch(&url).with_context(|| {
+                    format!(
+                        "could not reach GitHub to read {owner}/{repo}'s auto-oss policy; \
+                         check your network connection and that the repository name is correct"
+                    )
+                })?;
+                match fetched {
                     Some(body) => body,
                     None => continue,
                 }
