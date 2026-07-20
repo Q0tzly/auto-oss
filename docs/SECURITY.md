@@ -17,8 +17,9 @@ trusting that repository**, because:
 - The agent backend runs against the cloned code with edit permissions.
   Repository contents are untrusted input to the agent (prompt injection).
 
-Mitigations today: `autos policy <repo>` shows every gate command before you
-run `fix`; gates run inside the clone's working directory; nothing is
-submitted without your explicit confirmation. Sandboxed gate execution is a
-SPEC v1 candidate. Until then, treat `autos fix <repo>` with the same caution
-as `git clone && make` from that repository.
+Mitigations today: `autos fix` shows every gate command and requires explicit
+confirmation before cloning or invoking the backend; gates run inside the
+clone's working directory; nothing is submitted without a second explicit
+confirmation. Sandboxed gate execution is a SPEC v1 candidate. Until then,
+treat `autos fix <repo>` with the same caution as `git clone && make` from
+that repository.

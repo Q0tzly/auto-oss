@@ -39,6 +39,10 @@ pub fn run(args: FixArgs) -> Result<()> {
     };
 
     validate_request(&policy, &args)?;
+    if !confirm_policy_execution(&policy)? {
+        eprintln!("==> aborted before cloning; nothing was executed or submitted");
+        return Ok(());
+    }
     if !args.dry_run {
         enforce_limit(&policy, &repo)?;
     }
@@ -145,10 +149,30 @@ fn validate_request(policy: &Policy, args: &FixArgs) -> Result<()> {
             policy.accepts.scopes.join(", ")
         );
     }
-    if policy.require.reproduction && args.scope == "bug-fix" && args.repro.is_none() {
+    if policy.require.reproduction
+        && args.scope == "bug-fix"
+        && args
+            .repro
+            .as_deref()
+            .is_none_or(|repro| repro.trim().is_empty())
+    {
         bail!("this repository requires reproduction steps for bug fixes; pass --repro");
     }
     Ok(())
+}
+
+fn confirm_policy_execution(policy: &Policy) -> Result<bool> {
+    eprintln!("\n==> repository-controlled execution plan");
+    if policy.gates.is_empty() {
+        eprintln!("    gates: none declared");
+    } else {
+        for (name, command) in &policy.gates {
+            eprintln!("    gate {name}: {command}");
+        }
+    }
+    eprintln!("    The clone is untrusted input to the backend.");
+    eprintln!("    Any declared gate runs as a shell command on this machine.");
+    confirm("Continue with this repository?")
 }
 
 /// SPEC §4: clients SHOULD respect declared limits without server-side
@@ -456,5 +480,26 @@ mod tests {
         let title = pr_title(&args);
         assert!(title.starts_with("docs: あ"));
         assert!(title.ends_with('…'));
+    }
+
+    #[test]
+    fn request_validation_rejects_empty_feedback_and_reproduction() {
+        let policy = policy::parse(
+            "version: 0\naccepts:\n  scopes: [bug-fix]\nrequire:\n  reproduction: true\n",
+        )
+        .unwrap();
+        let mut args = FixArgs {
+            repo: String::new(),
+            feedback: "  ".into(),
+            scope: "bug-fix".into(),
+            repro: None,
+            backend: "human".into(),
+            dry_run: true,
+        };
+        assert!(validate_request(&policy, &args).is_err());
+
+        args.feedback = "it fails".into();
+        args.repro = Some("  ".into());
+        assert!(validate_request(&policy, &args).is_err());
     }
 }

@@ -48,6 +48,8 @@ The pipeline, in order:
 
 1. **Policy discovery.** No opt-in → the command refuses and stops. The
    requested scope is validated against the policy before any work happens.
+   The complete gate list and the untrusted-repository warning are then shown;
+   an explicit `y` is required before cloning or executing anything.
 2. **Clone** into a fresh temporary work directory.
 3. **Patch generation** by the backend. `claude-code` runs Claude Code
    non-interactively with the feedback, scope, and size limit injected as
@@ -88,9 +90,9 @@ an existing file.
 
 Maintainer/CI side: fetch a pull request, extract its metadata block, and
 check it against the repository's policy. Verified: exactly one block,
-accepted scope, non-empty feedback and backend disclosure, `human_reviewed`
-when required, reproduction steps when required, and a `pass` report for
-every declared gate.
+accepted scope, actual changed-line count within `accepts.max_diff_lines`,
+non-empty feedback and backend disclosure, `human_reviewed` when required,
+reproduction steps when required, and a `pass` report for every declared gate.
 
 A PR with no metadata block is an ordinary contribution and passes
 trivially. Violations are listed and the exit code is non-zero, so the
@@ -102,5 +104,6 @@ command drops straight into CI:
     GH_TOKEN: ${{ github.token }}
 ```
 
-Note that `verify` checks conformance of the *claims*; re-running the gates
-(as this repository's CI does) is what checks their truth.
+Note that gate results and human review remain self-attested claims; re-running
+the gates (as this repository's CI does) is what checks the gate claims. The
+changed-line count is read directly from the pull request rather than metadata.
