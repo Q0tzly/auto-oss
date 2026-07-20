@@ -53,9 +53,12 @@ The pipeline, in order:
    the feedback, scope, and size limit injected as constraints, streaming
    its progress (tool calls, commentary) to your terminal as it works.
    `human` prints the constraints and waits while you edit the work
-   directory yourself. The backend's account of what it changed — Claude's
-   final summary, or the description you type for `human` — is placed in
-   the submission body under "What changed".
+   directory yourself. The backend also proposes the submission's **title**
+   (`human` asks you for one) and its account of what changed goes in the
+   body under "What changed"; your original feedback is quoted verbatim
+   under "Original feedback". When the backend offers no title, the first
+   line of the feedback is used, truncated. Titles are always prefixed with
+   the scope.
 4. **Size check.** A diff exceeding `accepts.max_diff_lines` is downgraded
    to the policy's fallback.
 5. **Gates.** Every command declared under `gates.*` runs in the clone.

@@ -6,13 +6,20 @@ use std::process::{Command, Stdio};
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 
+/// What a backend hands back besides the edits themselves: a suggested
+/// submission title and a human-readable summary for the body. Both are
+/// optional; the pipeline has fallbacks.
+#[derive(Debug, Default)]
+pub struct Generated {
+    pub title: Option<String>,
+    pub summary: Option<String>,
+}
+
 /// A coding agent that can turn a prompt into edits in a working directory.
 /// auto-oss never calls an LLM itself; it delegates patch generation here.
-/// `generate` may return a human-readable summary of the change, which ends
-/// up in the submission body.
 pub trait Backend {
     fn name(&self) -> &str;
-    fn generate(&self, workdir: &Path, prompt: &str) -> Result<Option<String>>;
+    fn generate(&self, workdir: &Path, prompt: &str) -> Result<Generated>;
 }
 
 /// User-side configuration, `~/.auto-oss/config.yml`:
@@ -91,7 +98,7 @@ impl Backend for ClaudeCode {
         "claude-code"
     }
 
-    fn generate(&self, workdir: &Path, prompt: &str) -> Result<Option<String>> {
+    fn generate(&self, workdir: &Path, prompt: &str) -> Result<Generated> {
         // stream-json makes progress visible while the agent works; plain -p
         // is silent until the very end, which reads as a hang.
         let mut child = Command::new("claude")
@@ -129,7 +136,25 @@ impl Backend for ClaudeCode {
         if !status.success() {
             bail!("claude exited with {status}");
         }
-        Ok(summary)
+        Ok(summary.map(split_title_summary).unwrap_or_default())
+    }
+}
+
+/// The prompt asks the agent to lead its final reply with `TITLE: …`;
+/// split that off from the body of the summary.
+fn split_title_summary(text: String) -> Generated {
+    let Some(rest) = text.trim().strip_prefix("TITLE:") else {
+        return Generated {
+            title: None,
+            summary: Some(text),
+        };
+    };
+    let (title_line, remainder) = rest.split_once('\n').unwrap_or((rest, ""));
+    let title = title_line.trim().trim_end_matches('.').to_string();
+    let remainder = remainder.trim();
+    Generated {
+        title: (!title.is_empty()).then_some(title),
+        summary: (!remainder.is_empty()).then(|| remainder.to_string()),
     }
 }
 
@@ -199,7 +224,7 @@ impl Backend for Human {
         "human"
     }
 
-    fn generate(&self, workdir: &Path, prompt: &str) -> Result<Option<String>> {
+    fn generate(&self, workdir: &Path, prompt: &str) -> Result<Generated> {
         eprintln!("==> backend `human`: make your changes now.\n");
         eprintln!("{prompt}");
         eprintln!("\n    workdir: {}", workdir.display());
@@ -208,13 +233,22 @@ impl Backend for Human {
         std::io::stdin()
             .read_line(&mut line)
             .context("reading stdin")?;
+        eprint!("    Submission title (empty for a default): ");
+        let mut title = String::new();
+        std::io::stdin()
+            .read_line(&mut title)
+            .context("reading stdin")?;
         eprint!("    Describe the change for the submission body (empty to skip): ");
         let mut desc = String::new();
         std::io::stdin()
             .read_line(&mut desc)
             .context("reading stdin")?;
+        let title = title.trim();
         let desc = desc.trim();
-        Ok((!desc.is_empty()).then(|| desc.to_string()))
+        Ok(Generated {
+            title: (!title.is_empty()).then(|| title.to_string()),
+            summary: (!desc.is_empty()).then(|| desc.to_string()),
+        })
     }
 }
 
@@ -230,7 +264,7 @@ impl Backend for Custom {
         &self.name
     }
 
-    fn generate(&self, workdir: &Path, prompt: &str) -> Result<Option<String>> {
+    fn generate(&self, workdir: &Path, prompt: &str) -> Result<Generated> {
         let argv: Vec<String> = self
             .command
             .iter()
@@ -245,7 +279,7 @@ impl Backend for Custom {
         if !status.success() {
             bail!("backend `{}` exited with {status}", self.name);
         }
-        Ok(None)
+        Ok(Generated::default())
     }
 }
 
@@ -274,8 +308,10 @@ pub fn build_prompt(
     p.push_str(
         ".\n- Edit files only. Do not commit, push, or create branches.\n\
          - Match the existing code style of the repository.\n\
-         - When you are done, end your reply with a short plain-language \
-         summary of what you changed and why; it will be shown to the \
+         - When you are done, end your reply with: a first line of the form \
+         `TITLE: <concise imperative pull-request title, at most 60 \
+         characters, no scope prefix>`, followed by a short plain-language \
+         summary of what you changed and why. Both will be shown to the \
          project's maintainers.\n",
     );
     p
@@ -326,6 +362,25 @@ mod tests {
         report_claude_event(&event, &mut errored, &mut summary);
         assert_eq!(errored.as_deref(), Some("boom"));
         assert!(summary.is_none());
+    }
+
+    #[test]
+    fn splits_title_from_summary() {
+        let g =
+            split_title_summary("TITLE: Fix panic on empty config.\n\nGuarded the parse.".into());
+        assert_eq!(g.title.as_deref(), Some("Fix panic on empty config"));
+        assert_eq!(g.summary.as_deref(), Some("Guarded the parse."));
+
+        let g = split_title_summary("Just a summary with no title line.".into());
+        assert!(g.title.is_none());
+        assert_eq!(
+            g.summary.as_deref(),
+            Some("Just a summary with no title line.")
+        );
+
+        let g = split_title_summary("TITLE: Only a title".into());
+        assert_eq!(g.title.as_deref(), Some("Only a title"));
+        assert!(g.summary.is_none());
     }
 
     #[test]

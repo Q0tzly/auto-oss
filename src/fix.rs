@@ -64,8 +64,8 @@ pub fn run(args: FixArgs) -> Result<()> {
         &args.scope,
         policy.accepts.max_diff_lines,
     );
-    let summary = match backend.generate(&workdir, &prompt) {
-        Ok(s) => s,
+    let generated = match backend.generate(&workdir, &prompt) {
+        Ok(g) => g,
         Err(e) => {
             tracker.set("failed");
             return Err(e);
@@ -106,11 +106,11 @@ pub fn run(args: FixArgs) -> Result<()> {
     };
     let qualified = !oversized && gates::all_pass(&gate_results);
 
-    let title = pr_title(&args);
+    let title = pr_title(&args, generated.title.as_deref());
     let body = submission_body(
         &args,
         backend.name(),
-        summary.as_deref(),
+        generated.summary.as_deref(),
         &gate_results,
         qualified,
         &diff,
@@ -234,25 +234,30 @@ fn make_workdir(repo: &RepoRef) -> Result<PathBuf> {
     Ok(dir)
 }
 
-fn pr_title(args: &FixArgs) -> String {
-    let mut summary = args
-        .feedback
-        .lines()
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    if summary.len() > 60 {
-        let cut = summary
-            .char_indices()
-            .take_while(|(i, _)| *i <= 57)
-            .last()
-            .map(|(i, c)| i + c.len_utf8())
-            .unwrap_or(0);
-        summary.truncate(cut);
-        summary.push('…');
-    }
+/// Prefer the backend's title; fall back to truncated feedback. The scope
+/// prefix stays either way — it is how auto-oss submissions read at a
+/// glance in a PR list. The user's raw feedback always travels in the body.
+fn pr_title(args: &FixArgs, backend_title: Option<&str>) -> String {
+    let summary = match backend_title {
+        Some(t) => truncate_chars(t.trim(), 80),
+        None => truncate_chars(args.feedback.lines().next().unwrap_or("").trim(), 60),
+    };
     format!("{}: {}", args.scope, summary)
+}
+
+fn truncate_chars(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_string();
+    }
+    let cut = s
+        .char_indices()
+        .take_while(|(i, _)| *i <= max_bytes - 3)
+        .last()
+        .map(|(i, c)| i + c.len_utf8())
+        .unwrap_or(0);
+    let mut out = s[..cut].to_string();
+    out.push('…');
+    out
 }
 
 fn submission_body(
@@ -274,15 +279,24 @@ fn submission_body(
     let summary_section = summary
         .map(|s| format!("## What changed\n\n{s}\n\n"))
         .unwrap_or_default();
+    let feedback_section = format!(
+        "## Original feedback\n\n{}\n\n",
+        args.feedback
+            .lines()
+            .map(|l| format!("> {l}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
     if qualified {
         format!(
-            "{summary_section}This patch was generated from a user's feedback under the \
+            "{summary_section}{feedback_section}This patch was generated from a user's \
+             feedback under the \
              [auto-oss protocol](https://github.com/q0tzly/auto-oss), following this \
              repository's `auto-oss.yml` policy. A human reviewed it before submission.\n\n{block}\n"
         )
     } else {
         format!(
-            "{summary_section}This report was collected under the \
+            "{summary_section}{feedback_section}This report was collected under the \
              [auto-oss protocol](https://github.com/q0tzly/auto-oss). A patch was attempted \
              but did not qualify for a pull request under this repository's policy; the \
              partial diff is attached for reference.\n\n{block}\n\n\
@@ -491,8 +505,24 @@ mod tests {
             backend: None,
             dry_run: true,
         };
-        let title = pr_title(&args);
+        let title = pr_title(&args, None);
         assert!(title.starts_with("docs: あ"));
         assert!(title.ends_with('…'));
+    }
+
+    #[test]
+    fn prefers_backend_title_over_feedback() {
+        let args = FixArgs {
+            repo: String::new(),
+            feedback: "raw user words that make a poor title".into(),
+            scope: "bug-fix".into(),
+            repro: None,
+            backend: None,
+            dry_run: true,
+        };
+        assert_eq!(
+            pr_title(&args, Some("Handle empty config without panicking")),
+            "bug-fix: Handle empty config without panicking"
+        );
     }
 }

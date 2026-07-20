@@ -51,9 +51,11 @@ cargo install auto-oss   # `autos` バイナリが入る
 3. **パッチ生成** — backend が行う。`claude-code` はフィードバック・scope・
    サイズ上限を制約として注入して Claude Code を実行し、作業中の進捗
    (ツール呼び出し・コメント)を端末にストリーム表示する。`human` は制約を
-   表示し、あなたが workdir を直接編集する間待つ。backend による変更内容の
-   説明(Claude の最終要約、`human` ならあなたが入力する一文)は提出本文の
-   「What changed」に載る。
+   表示し、あなたが workdir を直接編集する間待つ。backend は提出の
+   **タイトル**も提案する(`human` は入力を求める)。変更内容の説明は本文の
+   「What changed」に、あなたの元のフィードバックは「Original feedback」に
+   原文引用で載る。backend がタイトルを返さない場合はフィードバックの先頭行を
+   切り詰めて使う。タイトルには常に scope の接頭辞が付く。
 4. **サイズ検査。** `accepts.max_diff_lines` を超える diff は policy の
    fallback に格下げ。
 5. **ゲート。** `gates.*` の全コマンドを clone 内で実行。出力は端末に流れる。
