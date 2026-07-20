@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use anyhow::{bail, Context, Result};
 
@@ -29,6 +29,9 @@ impl Backend for ClaudeCode {
         let status = Command::new("claude")
             .args(["-p", prompt, "--permission-mode", "acceptEdits"])
             .current_dir(workdir)
+            // The user's stdin belongs to the confirmation prompts, not to
+            // the agent; claude treats piped stdin as prompt input.
+            .stdin(Stdio::null())
             .status()
             .context("running `claude` (is Claude Code installed?)")?;
         if !status.success() {
