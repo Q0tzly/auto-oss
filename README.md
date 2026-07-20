@@ -24,3 +24,8 @@ Status: design stage. The reference CLI is not implemented yet.
 - Everything else in this repository (including the reference CLI, once it
   exists) is dual-licensed under [MIT](LICENSE-MIT) or
   [Apache-2.0](LICENSE-APACHE), at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in this repository by you shall be licensed as above
+(spec changes under CC BY 4.0, code under MIT OR Apache-2.0), without any
+additional terms or conditions.

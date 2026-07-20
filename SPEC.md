@@ -133,8 +133,11 @@ client: auto-oss/0.1.0
 Requirements:
 
 - `scope` MUST be one of the repository's `accepts.scopes`.
-- `feedback` MUST be the original user feedback, unedited. This is the
-  provenance record: it ties the patch to a real user's real problem.
+- `feedback` MUST be the original user feedback. This is the provenance
+  record: it ties the patch to a real user's real problem. Sensitive details
+  (credentials, personal data, private paths) MAY be redacted, and redactions
+  MUST be visibly marked (e.g. `[redacted]`); the feedback MUST NOT be
+  otherwise rewritten or summarized.
 - `agent` MUST disclose the backend that generated the patch. Submissions
   produced without any agent involvement are out of scope for this protocol.
 - `gates` MUST report the result of every gate declared in the policy.
