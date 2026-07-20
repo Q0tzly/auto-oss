@@ -328,19 +328,21 @@ fn submission_body(
             .collect::<Vec<_>>()
             .join("\n")
     );
+    let client = format!("auto-oss v{}", env!("CARGO_PKG_VERSION"));
     if qualified {
         format!(
             "{summary_section}{feedback_section}This patch was generated from a user's \
              feedback under the \
-             [auto-oss protocol](https://github.com/q0tzly/auto-oss), following this \
-             repository's `auto-oss.yml` policy. A human reviewed it before submission.\n\n{block}\n"
+             [auto-oss protocol](https://github.com/q0tzly/auto-oss) by {client}, following \
+             this repository's `auto-oss.yml` policy. A human reviewed it before \
+             submission.\n\n{block}\n"
         )
     } else {
         format!(
             "{summary_section}{feedback_section}This report was collected under the \
-             [auto-oss protocol](https://github.com/q0tzly/auto-oss). A patch was attempted \
-             but did not qualify for a pull request under this repository's policy; the \
-             partial diff is attached for reference.\n\n{block}\n\n\
+             [auto-oss protocol](https://github.com/q0tzly/auto-oss) by {client}. A patch was \
+             attempted but did not qualify for a pull request under this repository's policy; \
+             the partial diff is attached for reference.\n\n{block}\n\n\
              <details><summary>Partial diff</summary>\n\n```diff\n{diff}\n```\n</details>\n"
         )
     }
