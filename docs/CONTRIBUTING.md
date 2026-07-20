@@ -10,11 +10,12 @@ forks of the spec must not use the auto-oss name (see SPEC.md §6).
 
 ## DESIGN.md
 
-DESIGN.md is the maintainer's decision log, written in Japanese. It records
-*why* choices were made at the time they were made. It is not a collaborative
-document: PRs against it are generally not accepted, apart from typo fixes.
-If you disagree with a recorded decision, open an issue — the log gets a new
-entry rather than a rewrite.
+[DESIGN.md](DESIGN.md) records the project's architecture and the reasoning
+behind its decisions, as judged by the maintainer. It is not a collaborative
+document: PRs against it are generally not accepted, apart from typo fixes
+and translation upkeep under `docs/ja/`. If you disagree with a recorded
+decision, open an issue — the document gets a new entry rather than a
+rewrite.
 
 ## Code (the `autos` CLI)
 

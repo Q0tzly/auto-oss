@@ -1,135 +1,169 @@
-# auto-oss 設計メモ
+English | [日本語](ja/DESIGN.md)
 
-> このファイルは設計判断とその理由の記録。公開仕様は [SPEC.md](SPEC.md)。
+# auto-oss Design
 
-## 一言でいうと
+This document records the architecture of auto-oss and the reasoning behind
+its decisions. It is descriptive; the normative protocol is [SPEC.md](SPEC.md).
 
-**「利用者側のエージェントが、フィードバックからパッチを作って upstream に持っていく」ための貢献プロトコルと、それを喋る CLI。**
+## Problem
 
-- 既存の Issue→PR 自動化(OpenHands Resolver、Copilot coding agent、Sentry Seer)は全部**オーナー側**の自動化。
-- auto-oss は**外部の利用者**が起点。不満を感じた本人のエージェントがパッチを作り、リポジトリが宣言した受け入れ条件に従って PR を出す。
-- プラットフォーム(GitHub / Cursor Origin / その他)には依存しない。git と PR/patch の概念があれば成立する。
+Coding agents made patches cheap, and maintainers are paying for it:
+unsolicited AI-generated pull requests and bug reports have become a
+recognized burden on open-source projects. Meanwhile, every existing
+automation of the issue-to-PR loop — OpenHands Resolver, GitHub Copilot's
+coding agent, Sentry Seer — is **owner-side**: the repository's own team
+wires an agent into their own backlog.
 
-## なぜツールではなくプロトコルか
+Nobody had designed the other direction: the *outside user* who actually
+hits a problem has an agent too. auto-oss exists so that user's agent can
+turn feedback into a patch and deliver it upstream **in a form maintainers
+can trust**.
 
-AI 生成 PR の洪水はすでにメンテナに嫌われている(curl の AI スロップ出禁が象徴)。
-素朴な「勝手に PR を投げるエージェント」はスパム発生装置になって終わる。
+## Position: a protocol, not a tool
 
-解くべき問題は「パッチを作れるか」ではなく「**受け取る側が信頼できる形で届くか**」。
-だから中心に置くのは:
+The hard problem is not producing a patch — agents do that. The hard problem
+is that an unsolicited agent PR is indistinguishable from spam. So the core
+of auto-oss is a contract, fixed as file formats:
 
-1. **メンテナの opt-in 宣言** — リポジトリに `auto-oss.yml` を置いた者だけが対象
-2. **品質ゲート** — 宣言されたテスト・lint を通らないパッチは PR にしない(Issue に格下げ)
-3. **開示と責任** — エージェント関与の明示、送信前の人間による確認を必須にできる
+1. **Maintainer opt-in** — only repositories that publish `auto-oss.yml`
+   receive submissions. The absence of the file is a refusal that conforming
+   clients must honor.
+2. **Quality gates** — the policy declares the commands (test, lint, build)
+   a patch must pass. Failing patches are downgraded to structured issues,
+   never submitted as PRs.
+3. **Disclosure and accountability** — every submission embeds a
+   machine-readable provenance block (original feedback, backend, gate
+   results), and a human remains the author of record.
 
-この 3 点をファイルフォーマットとして固定するのが auto-oss の本体。
-パッチ生成そのものは既存エージェント(Claude Code / OpenHands / OpenCode)に委譲し、自作しない。
+Patch generation is deliberately delegated to existing agents (Claude Code
+today; others pluggable). The value of auto-oss is the contract, not another
+agent — and the contract also works in reverse: publishing a policy is
+simultaneously a statement of what a repository will *not* accept.
 
-## 全体像
-
-```
-利用者                          auto-oss CLI                        upstream リポジトリ
-  |                                 |                                    |
-  | 「この挙動がおかしい」          |                                    |
-  |-------------------------------->|                                    |
-  |                                 |-- policy 取得 (auto-oss.yml) ----->|
-  |                                 |<-- 受け入れ条件 -------------------|
-  |                                 |                                    |
-  |                                 |-- clone / worktree                 |
-  |                                 |-- エージェント backend でパッチ生成 |
-  |                                 |-- 品質ゲート実行 (test / lint)      |
-  |                                 |                                    |
-  |<-- diff とゲート結果を提示 ------|                                    |
-  | 承認                            |                                    |
-  |-------------------------------->|-- fork / push / PR (メタデータ付き)->|
-  |                                 |                                    |
-  |                                 |   ゲート不通過なら構造化 Issue に格下げ
-```
-
-## 設計判断の記録
-
-### 宣言ファイルの置き場所と名前
-- 探索順: `auto-oss.yml`(ルート) → `.github/auto-oss.yml`
-- ドットなしをルートに置くのを推奨。opt-in の宣言は「見える」ことに意味があるため
-  (FUNDING.yml が `.github/` なのはメタデータだから。これは契約なので可視性優先)。
-
-### PR メタデータは HTML コメント内の YAML
-- PR body の `<!-- auto-oss:v0 ... -->` ブロックに構造化データを埋める。
-- 人間には邪魔にならず、ツール(メンテナ側の CI・将来のプラットフォーム統合)からは機械可読。
-- GitHub 固有の機能(カスタムフィールド等)に依存しない。
-
-### エージェント backend は差し替え可能
-- v0 は Claude Code (`claude -p`) を最初の backend にする。subprocess 呼び出しの薄い抽象を挟む。
-- auto-oss 自身は LLM を直接呼ばない。プロンプト組み立て(フィードバック + policy + 制約)までが責務。
-
-### 送信前の人間確認はデフォルト必須
-- CLI は diff・ゲート結果・PR 文面を提示して承認を待つのがデフォルト。
-- リポジトリ側 policy の `require.human_review: true` は「利用者が確認したと宣言せよ」の意味で、
-  メタデータに `human_reviewed` として記録される。虚偽宣言は検証できないが、
-  開示を契約に含めること自体に意味がある(違反者を ban する根拠になる)。
-
-### ゲート不通過時は Issue に格下げ
-- パッチが作れなかった/ゲートを通らなかった場合も、収集した再現手順・環境情報・
-  途中まで作ったパッチは価値がある。policy の `fallback` に従い構造化 Issue として提出する。
-- 「必ず PR」ではなく「PR は品質が保証できたときだけ」がスパム対策の核心。
-
-### 名前: プロトコルは auto-oss、コマンドは autos
-- `autos` はギリシャ語 αὐτός(自分自身・自らの意思で)。プロジェクトの核心(本人が自らの意思で動く)を表す。
-- ただし英語圏で "autos" は「自動車」なので、検索されるべきプロトコル名には使えない。
-- 分担: プロトコル / リポジトリ / crate = `auto-oss`(検索可能)、バイナリ = `autos`(打ちやすい)。
-  ripgrep → `rg` と同じ慣行。語源は README の Name 節でブランドの資産として使う。
-
-### 実装言語は Rust
-- 単一バイナリで配布しやすく、利用者のマシンで動く CLI に向く。
-- パッチ生成は外部エージェントに委譲するので、auto-oss 本体は I/O とオーケストレーションのみ。重い依存は不要。
-
-## CLI UX スケッチ
+## Architecture
 
 ```
-# 利用者側
-autos policy <repo>                 # 対象リポジトリの受け入れ条件を表示(opt-in してるか)
-autos fix <repo> "<feedback>"       # 本体: policy 取得 → パッチ生成 → ゲート → 確認 → PR
-autos fix --dry-run ...             # PR 作成の手前(diff 提示)まで
-autos status                        # 進行中/提出済みの貢献の一覧
-
-# メンテナ側
-autos init                          # 対話的に auto-oss.yml を生成
-autos verify <pr-url>               # PR のメタデータブロックを検証(CI に組める)
+user                            autos CLI                          upstream repository
+ |                                 |                                    |
+ | "this behavior is wrong"        |                                    |
+ |-------------------------------->|                                    |
+ |                                 |--- fetch policy (auto-oss.yml) --->|
+ |                                 |<-- acceptance conditions ----------|
+ |                                 |                                    |
+ |                                 |-- clone into a fresh workdir       |
+ |                                 |-- agent backend generates patch    |
+ |                                 |-- run declared gates (test/lint)   |
+ |                                 |                                    |
+ |<-- diff + gate results ---------|                                    |
+ | approve                         |                                    |
+ |-------------------------------->|-- push branch, open PR ----------->|
+ |                                 |   (direct with access, else fork)  |
+ |                                 |                                    |
+ |                                 |   gates failed -> structured issue
 ```
 
-`fix` の内部フロー:
-1. policy 取得・パース。opt-in なし → その旨を表示して終了(勝手に PR しない)
-2. shallow clone を作業ディレクトリに作成
-3. backend にプロンプトを渡してパッチ生成(policy の scope / max_diff_lines を制約として注入)
-4. ゲート実行(policy の `gates.*` をそのまま実行)
-5. diff + ゲート結果 + 生成された PR 文面を提示 → 承認待ち
-6. 承認後: fork → branch push → PR 作成(`gh` に委譲)。不通過なら fallback へ
+Module layout of the reference implementation (Rust, single binary):
 
-## MVP スコープ(v0)
+| Module | Responsibility | SPEC section |
+|---|---|---|
+| `policy` | discovery, parsing, defaults, repo references | §1–2 |
+| `fix` | the submission pipeline | §4 |
+| `backend` | agent abstraction (`claude-code`, `human`) | — |
+| `gates` | gate execution | §2 |
+| `metadata` | metadata block rendering | §3 |
+| `verify` | receiving-side conformance checking | §3–5 |
 
-やる:
-- SPEC v0(auto-oss.yml スキーマ + PR メタデータブロック)
-- `auto-oss policy` / `auto-oss fix`(backend: Claude Code)/ `auto-oss init`
-- このリポジトリ自身に auto-oss.yml を置いてドッグフーディング
+## Decisions
 
-やらない(将来):
-- 複数 backend(OpenHands / OpenCode)
-- policy の `accepts.paths`(触ってよい/いけないパスの宣言)。public 化して気づいた課題:
-  docs scope を許すと DESIGN.md のような「判断ログ」まで書き換え対象になる。
-  v0 では CONTRIBUTING.md の運用で防ぎ、パス制約は SPEC v1 候補にする
-- レートリミットの強制(v0 では宣言のみ)、署名によるメタデータ検証
-- GitHub 以外のフォージ(GitLab / Codeberg / Origin)対応 — SPEC 上は非依存を保つ
+### Policy file at the repository root
 
-## リスクと向き合い方
+Discovery order is `auto-oss.yml`, then `.github/auto-oss.yml`. The root
+location is recommended: opting in is a contract, and contracts benefit from
+being visible (`FUNDING.yml` hides in `.github/` because it is metadata;
+this is not).
 
-- **プラットフォームによる取り込み**: GitHub が「外部エージェント PR の受け入れ設定」を実装する可能性。
-  → 先にデファクトの規約を作れば取り込まれる側になれる。SPEC のプラットフォーム非依存性を保つのが防御。
-- **逆向きの信頼問題**: policy の gates は**利用者のマシンで実行される**ので、悪意ある opt-in
-  リポジトリが悪意あるゲートを宣言できる。エージェントにとってはリポジトリ内容自体が
-  prompt injection の入力になる。SECURITY.md に明文化済み。ゲートのサンドボックス実行は
-  SPEC v1 候補。
-- **虚偽メタデータ**: `human_reviewed: true` の嘘は検証不能。
-  → v0 では開示の契約化まで。将来は提出履歴の評判システムか署名を検討。
-- **「opt-in してるリポジトリがない」コールドスタート**:
-  → ドッグフーディング + 「エージェント PR に困ってるメンテナ」への逆張り訴求
-    (auto-oss.yml は「受け入れる」宣言であると同時に「これ以外は受け入れない」を表明する道具にもなる)。
+### Metadata as YAML inside an HTML comment
+
+The submission block lives in the PR/issue body as `<!-- auto-oss:v0 ... -->`.
+Invisible to human readers, machine-readable to maintainers' tooling, and —
+critically — portable: it depends on no forge-specific feature, so the
+protocol works anywhere git and pull requests exist.
+
+### Pluggable backends; the client never calls an LLM
+
+`autos` assembles the prompt (feedback + policy constraints) and delegates to
+a backend subprocess. This keeps the client small, keeps model choice with
+the user, and means every improvement in coding agents is inherited for
+free. The reserved backend `human` exists because disclosure must be
+truthful: a hand-written patch declares itself as such rather than
+pretending an agent was involved — the machinery (opt-in, gates, provenance)
+applies all the same.
+
+### Human confirmation before submission
+
+The CLI always shows the final diff, gate results, and submission body, and
+waits for explicit approval. The policy-level `require.human_review` maps to
+an attestation (`human_reviewed`) in the metadata. The attestation cannot be
+technically verified in v0 — its value is contractual: a false attestation
+is documented grounds for rejection and banning.
+
+### Downgrade instead of forcing a PR
+
+When gates fail or the diff exceeds the declared limit, the run is not
+discarded: reproduction steps, environment, and the partial diff are still
+valuable, so they are submitted as a structured issue if the policy's
+`fallback` allows. "A PR only when quality is proven" is the anti-spam core.
+
+### Direct push with access, fork without
+
+A pull request needs its head branch hosted on the forge. Contributors with
+push access branch on the upstream repository itself; outsiders go through a
+fork — the only route GitHub offers them. Both paths were validated against
+real repositories before release.
+
+### Rust, single binary
+
+The client runs on contributors' machines; a dependency-light single binary
+distributes well. Since patch generation is delegated, the client itself is
+orchestration and I/O only.
+
+### Naming: the protocol is auto-oss, the command is autos
+
+`autos` is Greek **αὐτός** — *self, of one's own will* — which is the point:
+the person who feels the problem acts on it through their own agent. As a
+project name, "autos" would drown in automobile search results, so the
+searchable name stays `auto-oss` and the root survives in the binary
+(the ripgrep/`rg` convention).
+
+## Security model
+
+The protocol protects maintainers from unwanted submissions; the reverse
+direction is documented in [SECURITY.md](SECURITY.md): policy gates execute
+on the *contributor's* machine, so running `autos fix` against a repository
+means trusting that repository — and repository contents are untrusted
+input (prompt injection) to the backend agent. Sandboxed gate execution is a
+v1 candidate.
+
+## Future (SPEC v1 candidates)
+
+- `accepts.paths` — path allow/deny lists. Realized after going public:
+  a `docs` scope exposes even a project's decision log to rewrites.
+- Sandboxed gate execution on the contributor side.
+- Additional backends (OpenHands, OpenCode).
+- Enforced rate limits, and signatures or reputation for metadata claims
+  (v0 verifies form; CI re-runs verify truth).
+- Forges beyond GitHub (GitLab, Codeberg) — the SPEC is already
+  forge-agnostic; only the client binds to `gh`.
+
+## Standing risks
+
+- **Platform absorption.** GitHub or another forge may ship first-party
+  "external agent PR" controls. Being first with an open, forge-agnostic
+  de-facto contract is the defense — absorption of an open standard is a
+  form of winning.
+- **False metadata.** `human_reviewed` and gate claims can be forged;
+  receiving-side CI re-execution is the practical mitigation until v1.
+- **Cold start.** A protocol with no opted-in repositories is a spec sheet.
+  Mitigations: dogfooding from day one, and pitching maintainers who are
+  publicly drowning in agent spam — for whom the policy file doubles as a
+  fence.

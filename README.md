@@ -13,7 +13,9 @@ quality-gated, disclosed, and always with a human as the author of record.
 
 - [docs/SPEC.md](docs/SPEC.md) — protocol specification (v0 draft): the
   `auto-oss.yml` policy file and the submission metadata block
-- [docs/DESIGN.md](docs/DESIGN.md) — design notes and rationale (Japanese)
+- [docs/CLI.md](docs/CLI.md) — `autos` command reference
+- [docs/DESIGN.md](docs/DESIGN.md) — architecture and design rationale
+- [docs/ja/](docs/ja/) — 日本語版ドキュメント (Japanese translations)
 
 ## Reference CLI: `autos`
 

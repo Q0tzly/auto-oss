@@ -1,3 +1,5 @@
+English | [日本語](ja/SPEC.md)
+
 # auto-oss Protocol Specification — v0 (draft)
 
 auto-oss is a contribution protocol for **user-side coding agents**: an agent
