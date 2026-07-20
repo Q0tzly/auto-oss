@@ -15,7 +15,22 @@ quality-gated, disclosed, and always with a human as the author of record.
   policy file and the submission metadata block
 - [DESIGN.md](DESIGN.md) — design notes and rationale (Japanese)
 
-Status: design stage. The reference CLI is not implemented yet.
+## Reference CLI
+
+```
+auto-oss policy <repo>   # show a repository's acceptance policy (or that it has none)
+auto-oss init            # generate an auto-oss.yml for your repository
+auto-oss fix <repo> "<feedback>" [--scope S] [--repro R] [--dry-run]
+                         # feedback -> agent patch -> policy gates -> human review -> PR
+```
+
+`fix` clones the target, delegates patch generation to an agent backend
+(Claude Code in v0), runs the policy's gates locally, and only submits a pull
+request when everything passes — otherwise it falls back to a structured
+issue, as the policy directs. Submission always happens from your own account,
+after you approve the final diff. Requires `git`, `curl`, `gh`, and `claude`.
+
+Status: v0.1 — protocol spec and working CLI, pre-announcement.
 
 ## License
 
