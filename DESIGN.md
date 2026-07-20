@@ -113,7 +113,6 @@ autos verify <pr-url>               # PR のメタデータブロックを検証
 - このリポジトリ自身に auto-oss.yml を置いてドッグフーディング
 
 やらない(将来):
-- `verify` の CI アクション化
 - 複数 backend(OpenHands / OpenCode)
 - policy の `accepts.paths`(触ってよい/いけないパスの宣言)。public 化して気づいた課題:
   docs scope を許すと DESIGN.md のような「判断ログ」まで書き換え対象になる。

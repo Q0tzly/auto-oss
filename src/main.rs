@@ -4,6 +4,7 @@ mod gates;
 mod init_cmd;
 mod metadata;
 mod policy;
+mod verify;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -54,12 +55,18 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Check a pull request's metadata block against its repository's policy
+    Verify {
+        /// GitHub pull request URL
+        pr: String,
+    },
 }
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::Policy { repo } => show_policy(&repo),
         Cmd::Init { force } => init_cmd::run(force),
+        Cmd::Verify { pr } => verify::run(&pr),
         Cmd::Fix {
             repo,
             feedback,
