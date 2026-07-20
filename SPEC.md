@@ -176,3 +176,14 @@ Publishing `auto-oss.yml` means:
 The `version` field and the metadata block tag (`auto-oss:v0`) carry the spec
 major version. Clients encountering a higher major version than they support
 MUST treat the repository as not opted in for them.
+
+Extensions that are incompatible with this specification MUST NOT use the
+name "auto-oss" or the `auto-oss.yml` / `auto-oss:vN` identifiers.
+
+---
+
+## License
+
+This specification is licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+You are free to share, adapt, and implement it, with attribution.

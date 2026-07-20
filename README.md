@@ -16,3 +16,11 @@ quality-gated, disclosed, and always with a human as the author of record.
 - [DESIGN.md](DESIGN.md) — design notes and rationale (Japanese)
 
 Status: design stage. The reference CLI is not implemented yet.
+
+## License
+
+- The specification ([SPEC.md](SPEC.md)) is licensed under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- Everything else in this repository (including the reference CLI, once it
+  exists) is dual-licensed under [MIT](LICENSE-MIT) or
+  [Apache-2.0](LICENSE-APACHE), at your option.
