@@ -33,14 +33,30 @@ Three outcomes are distinguished:
 
 A repository that cannot be reached is an error, never "not opted in".
 
-### `autos fix <repo> "<feedback>" [options]`
+### `autos <verb> <repo> "<feedback>" [options]`
 
-The main pipeline: turn feedback into a policy-gated submission.
+The main pipeline: turn feedback into a policy-gated submission. The verb
+sets the scope, so the common cases don't need `--scope` at all — named
+after [Conventional Commits](https://www.conventionalcommits.org/), since
+that's the convention most people already reach for:
+
+| Verb | Scope |
+|---|---|
+| `fix` | `bug-fix` |
+| `feat` | `feature` |
+| `docs` | `docs` |
+| `refactor` | `refactor` |
+| `test` | `test` |
+| `typo` | `typo` |
+
+For a scope your target declares that isn't one of these — a repository can
+declare any string in `accepts.scopes` — use `autos fix --scope <custom>`;
+`fix` is the only verb with a `--scope` flag, since it exists as the
+general-purpose escape hatch.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--scope <s>` | `bug-fix` | Change category; must be listed in the policy's `accepts.scopes`. Beyond `bug-fix`: `docs`, `typo`, `test`, `refactor`, and `feature` — use `feature` to propose an enhancement rather than fix a defect |
-| `--repro <text>` | — | Reproduction steps; required by policies with `require.reproduction` for bug fixes |
+| `--repro <text>` | — | Reproduction steps; required by policies with `require.reproduction` for bug fixes, welcome as context on any verb |
 | `--backend <b>` | config `default_backend`, else `claude-code` | Patch producer: `claude-code`, `human`, or a custom backend from the config |
 | `--dry-run` | off | Stop after gates and preview; submit nothing |
 

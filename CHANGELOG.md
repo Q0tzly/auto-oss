@@ -12,6 +12,10 @@ corresponding version-boundary commits.
 
 ### Added
 
+- Added `feat`, `docs`, `refactor`, `test`, and `typo` as scope-shortcut
+  subcommands alongside `fix`, named after Conventional Commits prefixes, so
+  the common cases don't need `--scope`. `fix` keeps `--scope` as the
+  escape hatch for a scope outside this set.
 - Added `autos resume <workdir>` to pick an interrupted `fix` run back up
   (Ctrl-C, a closed terminal, a crash) without re-cloning or re-running the
   backend. `autos status` now prints the exact command for any resumable

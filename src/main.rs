@@ -8,7 +8,7 @@ mod status;
 mod verify;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 use policy::{PolicyStatus, RepoRef};
 
@@ -21,6 +21,41 @@ use policy::{PolicyStatus, RepoRef};
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
+}
+
+/// Arguments shared by every scope-specific submission subcommand
+/// (`fix`, `feat`, `docs`, `refactor`, `test`, `typo`).
+#[derive(Args)]
+struct FixCommon {
+    /// Local path, owner/repo, or GitHub URL
+    repo: String,
+    /// The feedback, verbatim
+    feedback: String,
+    /// Reproduction steps (required by some policies for bug fixes)
+    #[arg(long)]
+    repro: Option<String>,
+    /// Backend that produces the patch: claude-code, `human` (you edit
+    /// the workdir yourself), or a custom backend from
+    /// ~/.auto-oss/config.yml. Defaults to the config's
+    /// `default_backend`, else claude-code.
+    #[arg(long)]
+    backend: Option<String>,
+    /// Stop after generating the patch and running gates; submit nothing
+    #[arg(long)]
+    dry_run: bool,
+}
+
+impl FixCommon {
+    fn into_args(self, scope: impl Into<String>) -> fix::FixArgs {
+        fix::FixArgs {
+            repo: self.repo,
+            feedback: self.feedback,
+            scope: scope.into(),
+            repro: self.repro,
+            backend: self.backend,
+            dry_run: self.dry_run,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -36,27 +71,41 @@ enum Cmd {
         #[arg(long)]
         force: bool,
     },
-    /// Turn user feedback into a policy-gated patch and submit it upstream
+    /// Fix a bug (scope: bug-fix). For a scope your repository declares
+    /// that isn't one of autos's short subcommands, pass --scope directly.
     Fix {
-        /// Local path, owner/repo, or GitHub URL
-        repo: String,
-        /// The feedback, verbatim
-        feedback: String,
-        /// Change category; must be accepted by the repository's policy
+        #[command(flatten)]
+        common: FixCommon,
+        /// Change category; must be accepted by the repository's policy.
+        /// The `fix`/`feat`/`docs`/`refactor`/`test`/`typo` subcommands are
+        /// shortcuts for this; use this flag for anything else.
         #[arg(long, default_value = "bug-fix")]
         scope: String,
-        /// Reproduction steps (required by some policies for bug fixes)
-        #[arg(long)]
-        repro: Option<String>,
-        /// Backend that produces the patch: claude-code, `human` (you edit
-        /// the workdir yourself), or a custom backend from
-        /// ~/.auto-oss/config.yml. Defaults to the config's
-        /// `default_backend`, else claude-code.
-        #[arg(long)]
-        backend: Option<String>,
-        /// Stop after generating the patch and running gates; submit nothing
-        #[arg(long)]
-        dry_run: bool,
+    },
+    /// Propose a feature or enhancement (scope: feature)
+    Feat {
+        #[command(flatten)]
+        common: FixCommon,
+    },
+    /// Fix or improve documentation (scope: docs)
+    Docs {
+        #[command(flatten)]
+        common: FixCommon,
+    },
+    /// Propose a refactor (scope: refactor)
+    Refactor {
+        #[command(flatten)]
+        common: FixCommon,
+    },
+    /// Add or fix a test (scope: test)
+    Test {
+        #[command(flatten)]
+        common: FixCommon,
+    },
+    /// Fix a typo (scope: typo)
+    Typo {
+        #[command(flatten)]
+        common: FixCommon,
     },
     /// Check a pull request's metadata block against its repository's policy
     Verify {
@@ -81,21 +130,12 @@ fn main() -> Result<()> {
         Cmd::Verify { pr } => verify::run(&pr),
         Cmd::Status => status::run(),
         Cmd::Resume { workdir } => fix::resume(&workdir),
-        Cmd::Fix {
-            repo,
-            feedback,
-            scope,
-            repro,
-            backend,
-            dry_run,
-        } => fix::run(fix::FixArgs {
-            repo,
-            feedback,
-            scope,
-            repro,
-            backend,
-            dry_run,
-        }),
+        Cmd::Fix { common, scope } => fix::run(common.into_args(scope)),
+        Cmd::Feat { common } => fix::run(common.into_args("feature")),
+        Cmd::Docs { common } => fix::run(common.into_args("docs")),
+        Cmd::Refactor { common } => fix::run(common.into_args("refactor")),
+        Cmd::Test { common } => fix::run(common.into_args("test")),
+        Cmd::Typo { common } => fix::run(common.into_args("typo")),
     }
 }
 

@@ -28,20 +28,26 @@ contributor's intent, and it does not execute the declared gates itself.
 Installing the `auto-oss` crate gives you the `autos` command:
 
 ```
-autos policy <repo>   # show a repository's acceptance policy (or that it has none)
-autos init            # generate an auto-oss.yml for your repository
-autos fix <repo> "<feedback>" [--scope S] [--repro R] [--backend B] [--dry-run]
-                      # feedback -> agent patch -> policy gates -> human review -> PR
-autos verify <pr-url> # check a PR's metadata block against the policy (CI-friendly)
-autos status          # list recent and in-progress fix runs
+autos policy <repo>    # show a repository's acceptance policy (or that it has none)
+autos init             # generate an auto-oss.yml for your repository
+autos fix <repo> "<feedback>" [--repro R] [--backend B] [--dry-run]
+                       # feedback -> agent patch -> policy gates -> human review -> PR
+autos feat / docs / refactor / test / typo ...
+                       # same as `fix`, scope set by the verb (Conventional-Commits style)
+autos verify <pr-url>  # check a PR's metadata block against the policy (CI-friendly)
+autos status           # list recent and in-progress fix runs
+autos resume <workdir> # pick an interrupted fix run back up
 ```
 
-`fix` clones the target, delegates patch generation to an agent backend
-(Claude Code in v0), runs the policy's gates locally, and only submits a pull
-request when everything passes — otherwise it falls back to a structured
-issue, as the policy directs. Submission always happens from your own account,
-after you approve the final diff. Requires `git`, `curl`, and `gh`; the
-Claude Code backend also needs `claude`, but the human backend does not.
+Each of `fix`/`feat`/`docs`/`refactor`/`test`/`typo` clones the target,
+delegates patch generation to an agent backend (Claude Code by default),
+runs the policy's gates locally, and only submits a pull request when
+everything passes — otherwise it falls back to a structured issue or
+discussion, as the policy directs. `fix` additionally takes `--scope` for a
+scope your target declares that isn't one of these verbs. Submission always
+happens from your own account, after you approve the final diff. Requires
+`git`, `curl`, and `gh`; the Claude Code backend also needs `claude`, but the
+human backend does not.
 
 Status: v0.1 — protocol spec and working CLI, pre-announcement.
 

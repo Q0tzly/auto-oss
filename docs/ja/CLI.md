@@ -32,14 +32,29 @@ cargo install auto-oss   # `autos` バイナリが入る
 
 リポジトリに到達できない場合はエラーであり、決して「not opted in」ではない。
 
-### `autos fix <repo> "<feedback>" [オプション]`
+### `autos <動詞> <repo> "<feedback>" [オプション]`
 
-本体パイプライン: フィードバックを policy 準拠の提出に変える。
+本体パイプライン: フィードバックを policy 準拠の提出に変える。動詞が scope を
+決めるので、よくあるケースでは `--scope` を書く必要がない——
+[Conventional Commits](https://www.conventionalcommits.org/) にならった
+命名で、多くの人がすでに馴染んでいる慣習に合わせた:
+
+| 動詞 | scope |
+|---|---|
+| `fix` | `bug-fix` |
+| `feat` | `feature` |
+| `docs` | `docs` |
+| `refactor` | `refactor` |
+| `test` | `test` |
+| `typo` | `typo` |
+
+対象リポジトリがこれら以外の scope(`accepts.scopes` には任意の文字列を
+宣言できる)を宣言している場合は `autos fix --scope <独自の値>` を使う。
+`--scope` フラグを持つのは `fix` だけ——汎用の逃げ道として存在している。
 
 | オプション | デフォルト | 意味 |
 |---|---|---|
-| `--scope <s>` | `bug-fix` | 変更カテゴリ。policy の `accepts.scopes` にあること。`bug-fix` 以外に `docs`・`typo`・`test`・`refactor`・`feature` があり、不具合修正ではなく機能提案をするときは `feature` を使う |
-| `--repro <text>` | — | 再現手順。`require.reproduction` の policy ではバグ修正に必須 |
+| `--repro <text>` | — | 再現手順。`require.reproduction` の policy ではバグ修正に必須、それ以外の動詞でも文脈として歓迎される |
 | `--backend <b>` | config の `default_backend`、なければ `claude-code` | パッチ生成役: `claude-code`・`human`・config の custom backend |
 | `--dry-run` | off | ゲートとプレビューまでで停止。何も提出しない |
 

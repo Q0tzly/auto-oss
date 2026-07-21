@@ -119,6 +119,17 @@ discarded: reproduction steps, environment, and the partial diff are still
 valuable, so they are submitted as a structured issue if the policy's
 `fallback` allows. "A PR only when quality is proven" is the anti-spam core.
 
+### Scope verbs, not just a `--scope` flag
+
+`fix`, `feat`, `docs`, `refactor`, `test`, and `typo` are separate
+subcommands, not one command with a required flag — named after
+[Conventional Commits](https://www.conventionalcommits.org/) prefixes,
+which most of the target audience already reaches for. Each is a thin
+wrapper that fixes the scope and otherwise runs the identical pipeline.
+`fix` alone keeps a `--scope` flag as the escape hatch for a repository
+that declares a scope outside this well-known set — `accepts.scopes` is a
+free-form list, so the protocol can't assume these six cover every policy.
+
 ### Direct push with access, fork without
 
 A pull request needs its head branch hosted on the forge. Contributors with
@@ -144,10 +155,12 @@ searchable name stays `auto-oss` and the root survives in the binary
 
 The protocol protects maintainers from unwanted submissions; the reverse
 direction is documented in [SECURITY.md](SECURITY.md): policy gates execute
-on the *contributor's* machine, so running `autos fix` against a repository
-means trusting that repository — and repository contents are untrusted
-input (prompt injection) to the backend agent. Sandboxed gate execution is a
-v1 candidate.
+on the *contributor's* machine, so running `autos fix` (or any of its
+scope-shortcut siblings — `feat`, `docs`, `refactor`, `test`, `typo`, all
+thin wrappers over the same pipeline) against a repository means trusting
+that repository — and repository contents are untrusted input (prompt
+injection) to the backend agent. Sandboxed gate execution is a v1
+candidate.
 
 ## Future (SPEC v1 candidates)
 

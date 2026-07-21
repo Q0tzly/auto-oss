@@ -286,6 +286,87 @@ fn fix_enforces_weekly_limit_from_fake_home() {
 }
 
 #[test]
+fn docs_subcommand_sets_scope_without_a_flag() {
+    let fixture = Fixture::new(Some(&policy("gates:\n  test: \"true\"\n")));
+
+    let output = fixture.autos_with_stdin(
+        &[
+            "docs",
+            fixture.repo_arg(),
+            "update the fixture",
+            "--dry-run",
+        ],
+        "y\n",
+    );
+
+    assert_success(&output);
+    let stderr = text(&output.stderr);
+    assert!(stderr.contains("scope: docs"), "{stderr}");
+    assert!(
+        stderr.contains("dry run: stopping before submission"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn feat_subcommand_rejects_a_policy_that_only_accepts_docs() {
+    let fixture = Fixture::new(Some(&policy("")));
+
+    let output = fixture.autos(&["feat", fixture.repo_arg(), "add a feature", "--dry-run"]);
+
+    assert!(!output.status.success());
+    let stderr = text(&output.stderr);
+    assert!(
+        stderr.contains("scope `feature` is not accepted"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn resume_continues_an_interrupted_run_from_saved_state() {
+    let fixture = Fixture::new(Some(&policy("gates:\n  test: \"true\"\n")));
+
+    // Simulate a run that already generated and staged a patch, then died
+    // (Ctrl-C, crash) before the gate-confirmation prompt was answered —
+    // the same state a killed `fix`/`feat`/... leaves behind.
+    fs::write(fixture.repo.join("README.md"), "changed by a prior run\n").unwrap();
+    git(&fixture.repo, &["add", "-A"]);
+
+    let workdir = fixture.repo.to_str().unwrap();
+    let runs_dir = fixture.home.join(".auto-oss/runs");
+    fs::create_dir_all(&runs_dir).unwrap();
+    fs::write(
+        runs_dir.join("interrupted.json"),
+        format!(
+            r#"{{"repo":"target","workdir":{workdir:?},"phase":"awaiting-gate-approval",
+"started":1,"updated":1,"repo_arg":{workdir:?},"feedback":"resumed feedback",
+"scope":"docs","repro":null,"backend":null,"dry_run":true,"title":null,"summary":null}}"#
+        ),
+    )
+    .unwrap();
+
+    let output = fixture.autos_with_stdin(&["resume", workdir], "y\n");
+
+    assert_success(&output);
+    let stderr = text(&output.stderr);
+    assert!(stderr.contains("resuming target from phase"), "{stderr}");
+    assert!(stderr.contains("gate `test`: pass"), "{stderr}");
+    assert!(
+        stderr.contains("dry run: stopping before submission"),
+        "{stderr}"
+    );
+
+    // Resuming a now-terminal run must refuse rather than redo it.
+    let second = fixture.autos(&["resume", workdir]);
+    assert!(!second.status.success());
+    assert!(
+        text(&second.stderr).contains("already finished"),
+        "{}",
+        text(&second.stderr)
+    );
+}
+
+#[test]
 fn fix_stops_before_submission_when_a_gate_fails_for_a_local_repo() {
     let fixture = Fixture::new(Some(&policy("gates:\n  test: \"false\"\n")));
 
