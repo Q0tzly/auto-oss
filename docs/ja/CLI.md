@@ -129,6 +129,26 @@ cargo install auto-oss   # `autos` バイナリが入る
 失敗する。この機能が存在する前の `autos` が記録した実行は自動的には再開できない
 ——work directory はディスクに残っているので、手作業で仕上げることはできる。
 
+### `autos config [show | set <key> <value> | unset <key>]`
+
+`~/.auto-oss/config.yml` をエディタで開かずに読み書きする。引数なしの
+`autos config`(= `autos config show`)は設定ファイルの場所と、キーが
+未設定のときに使われる既定値を含めた現在の値を表示する。
+
+```
+autos config set default_backend human
+autos config set claude_code.model claude-sonnet-5
+autos config unset claude_code.model
+```
+
+設定できるキーは `default_backend` と `claude_code.model`。
+`default_backend` は書き込む前にバックエンド名を解決するので、存在しない
+名前は次の提出時ではなくその場で弾かれる。ファイル(と `~/.auto-oss/`)は
+最初の書き込み時に作られ、未設定のキーは書き出されない。
+
+custom backend は `command` が単一の値ではなくリストなので、従来どおり
+`backends:` ブロックを直接書く。
+
 ### 設定: `~/.auto-oss/config.yml`
 
 ```yaml

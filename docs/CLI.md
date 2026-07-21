@@ -141,6 +141,27 @@ bad state. A run tracked by an older `autos` version (before this field
 existed) can't be resumed automatically — the work directory is still on
 disk to finish by hand.
 
+### `autos config [show | set <key> <value> | unset <key>]`
+
+Read and edit `~/.auto-oss/config.yml` without opening it. Bare `autos config`
+(or `autos config show`) prints where the file is and the effective values,
+including the defaults used when a key is absent.
+
+```
+autos config set default_backend human
+autos config set claude_code.model claude-sonnet-5
+autos config unset claude_code.model
+```
+
+Settable keys are `default_backend` and `claude_code.model`. Setting
+`default_backend` resolves the name first, so an unknown backend is rejected
+at write time rather than at the next submission. The file is created (along
+with `~/.auto-oss/`) on the first write, and unset keys are simply left out
+of it.
+
+Custom backends still take a hand-written `backends:` block, since their
+`command` is a list rather than a single value.
+
 ### Configuration: `~/.auto-oss/config.yml`
 
 ```yaml

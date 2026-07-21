@@ -309,6 +309,69 @@ fn docs_subcommand_sets_scope_without_a_flag() {
 }
 
 #[test]
+fn config_show_reports_defaults_before_any_file_exists() {
+    let fixture = Fixture::new(None);
+    // Fixture pre-seeds a config.yml for the fix-flow tests; these tests
+    // want the config subcommand's own view of an untouched HOME.
+    fs::remove_file(fixture.home.join(".auto-oss/config.yml")).unwrap();
+
+    let output = fixture.autos(&["config"]);
+
+    assert_success(&output);
+    let stdout = text(&output.stdout);
+    assert!(stdout.contains("not created yet"), "{stdout}");
+    assert!(stdout.contains("claude-code (default)"), "{stdout}");
+}
+
+#[test]
+fn config_set_and_unset_round_trip_through_the_real_file() {
+    let fixture = Fixture::new(None);
+    fs::remove_file(fixture.home.join(".auto-oss/config.yml")).unwrap();
+
+    let set = fixture.autos(&["config", "set", "default_backend", "human"]);
+    assert_success(&set);
+    assert!(text(&set.stdout).contains("default_backend = human"));
+
+    let config_path = fixture.home.join(".auto-oss/config.yml");
+    assert!(
+        fs::read_to_string(&config_path)
+            .unwrap()
+            .contains("default_backend: human"),
+        "config file should contain the new value"
+    );
+
+    let show = fixture.autos(&["config", "show"]);
+    assert_success(&show);
+    assert!(text(&show.stdout).contains("default_backend:   human"));
+
+    let unset = fixture.autos(&["config", "unset", "default_backend"]);
+    assert_success(&unset);
+    assert!(
+        !fs::read_to_string(&config_path)
+            .unwrap()
+            .contains("default_backend"),
+        "unset key must not remain in the written file"
+    );
+}
+
+#[test]
+fn config_set_rejects_an_unresolvable_backend_without_writing() {
+    let fixture = Fixture::new(None);
+    let config_path = fixture.home.join(".auto-oss/config.yml");
+    let before = fs::read_to_string(&config_path).unwrap();
+
+    let output = fixture.autos(&["config", "set", "default_backend", "not-a-real-backend"]);
+
+    assert!(!output.status.success());
+    assert!(text(&output.stderr).contains("unknown backend"));
+    assert_eq!(
+        fs::read_to_string(&config_path).unwrap(),
+        before,
+        "a rejected value must not change the existing file"
+    );
+}
+
+#[test]
 fn feat_subcommand_rejects_a_policy_that_only_accepts_docs() {
     let fixture = Fixture::new(Some(&policy("")));
 

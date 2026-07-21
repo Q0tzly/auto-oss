@@ -12,6 +12,9 @@ corresponding version-boundary commits.
 
 ### Added
 
+- Added `autos config` to show and edit `~/.auto-oss/config.yml` from the
+  command line, with `config set` validating `default_backend` before
+  writing.
 - Added `feat`, `docs`, `refactor`, `test`, and `typo` as scope-shortcut
   subcommands alongside `fix`, named after Conventional Commits prefixes, so
   the common cases don't need `--scope`. `fix` keeps `--scope` as the

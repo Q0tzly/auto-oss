@@ -1,4 +1,5 @@
 mod backend;
+mod config_cmd;
 mod fix;
 mod gates;
 mod init_cmd;
@@ -121,6 +122,11 @@ enum Cmd {
         /// The interrupted run's work directory, as shown by `autos status`
         workdir: String,
     },
+    /// Show or change the user-side configuration (~/.auto-oss/config.yml)
+    Config {
+        #[command(subcommand)]
+        action: Option<config_cmd::Action>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -130,6 +136,7 @@ fn main() -> Result<()> {
         Cmd::Verify { pr } => verify::run(&pr),
         Cmd::Status => status::run(),
         Cmd::Resume { workdir } => fix::resume(&workdir),
+        Cmd::Config { action } => config_cmd::run(action),
         Cmd::Fix { common, scope } => fix::run(common.into_args(scope)),
         Cmd::Feat { common } => fix::run(common.into_args("feature")),
         Cmd::Docs { common } => fix::run(common.into_args("docs")),

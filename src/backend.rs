@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{bail, Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// What a backend hands back besides the edits themselves: a suggested
 /// submission title and a human-readable summary for the body. Both are
@@ -41,27 +41,36 @@ pub trait Backend {
 ///
 /// Custom backends run in the clone's working directory with `{prompt}`
 /// substituted; they are expected to edit files and exit 0.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_backend: Option<String>,
+    #[serde(skip_serializing_if = "ClaudeCodeCfg::is_unset")]
     pub claude_code: ClaudeCodeCfg,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub backends: BTreeMap<String, CustomBackendCfg>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ClaudeCodeCfg {
     /// Passed through to `claude --model`. None lets Claude Code decide.
     pub model: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+impl ClaudeCodeCfg {
+    fn is_unset(&self) -> bool {
+        self.model.is_none()
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CustomBackendCfg {
     pub command: Vec<String>,
     /// Recorded in the metadata for disclosure; auto-oss does not pass it to
     /// the command (put it in `command` if the tool needs a flag).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
 }
 
@@ -78,6 +87,18 @@ pub fn load_config() -> Result<Config> {
             .with_context(|| format!("invalid config at {}", path.display())),
         Err(_) => Ok(Config::default()),
     }
+}
+
+/// Write the config back, creating `~/.auto-oss/` if needed. Returns where it
+/// landed so callers can tell the user.
+pub fn save_config(config: &Config) -> Result<PathBuf> {
+    let path = config_path().context("cannot locate ~/.auto-oss/config.yml (HOME is not set)")?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    }
+    let raw = serde_yaml::to_string(config)?;
+    std::fs::write(&path, raw).with_context(|| format!("writing {}", path.display()))?;
+    Ok(path)
 }
 
 /// Resolve the backend: explicit flag > config `default_backend` > claude-code.
@@ -408,6 +429,24 @@ mod tests {
             Some("gpt-5-codex")
         );
         assert_eq!(resolve(Some("human"), &config).unwrap().model(), None);
+    }
+
+    #[test]
+    fn serializes_only_the_fields_that_are_set() {
+        let mut config = Config::default();
+        let raw = serde_yaml::to_string(&config).unwrap();
+        assert!(!raw.contains("default_backend"));
+        assert!(!raw.contains("claude_code"));
+        assert!(!raw.contains("backends"));
+
+        config.default_backend = Some("human".to_string());
+        let raw = serde_yaml::to_string(&config).unwrap();
+        assert!(raw.contains("default_backend: human"));
+        assert!(!raw.contains("claude_code"));
+
+        // What we write must be what we can read back.
+        let reparsed: Config = serde_yaml::from_str(&raw).unwrap();
+        assert_eq!(reparsed.default_backend.as_deref(), Some("human"));
     }
 
     #[test]

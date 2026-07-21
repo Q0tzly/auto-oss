@@ -37,6 +37,7 @@ autos feat / docs / refactor / test / typo ...
 autos verify <pr-url>  # check a PR's metadata block against the policy (CI-friendly)
 autos status           # list recent and in-progress fix runs
 autos resume <workdir> # pick an interrupted fix run back up
+autos config           # show your settings; `config set <key> <value>` to change them
 ```
 
 Each of `fix`/`feat`/`docs`/`refactor`/`test`/`typo` clones the target,
