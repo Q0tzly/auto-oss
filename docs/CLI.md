@@ -61,8 +61,9 @@ The pipeline, in order:
    the scope.
 4. **Size check.** A diff exceeding `accepts.max_diff_lines` is downgraded
    to the policy's fallback.
-5. **Gates.** Every command declared under `gates.*` runs in the clone.
-   Output streams to your terminal.
+5. **Gates.** Every command declared under `gates.*` is shown after patch
+   generation. An explicit `y` is required immediately before the commands
+   run in the clone; output streams to your terminal.
 6. **Preview and confirmation.** The full diff, gate results, and the exact
    submission body (with its metadata block) are shown; nothing is submitted
    without your explicit `y`. With `--dry-run` the command stops here.
@@ -85,8 +86,8 @@ has reached the limit.
 ### `autos status`
 
 List recent `fix` runs — including ones still running in another terminal —
-with their current phase (`cloning`, `generating`, `gates`,
-`awaiting-approval`, `submitted-pr`, …). Run files live in
+with their current phase (`cloning`, `generating`, `awaiting-gate-approval`,
+`gates`, `awaiting-approval`, `submitted-pr`, …). Run files live in
 `~/.auto-oss/runs/` and are pruned after seven days.
 
 ### Configuration: `~/.auto-oss/config.yml`
@@ -133,9 +134,9 @@ an existing file.
 
 Maintainer/CI side: fetch a pull request, extract its metadata block, and
 check it against the repository's policy. Verified: exactly one block,
-accepted scope, non-empty feedback and backend disclosure, `human_reviewed`
-when required, reproduction steps when required, and a `pass` report for
-every declared gate.
+accepted scope, actual changed-line count within `accepts.max_diff_lines`,
+non-empty feedback and backend disclosure, `human_reviewed` when required,
+reproduction steps when required, and a `pass` report for every declared gate.
 
 A PR with no metadata block is an ordinary contribution and passes
 trivially. Violations are listed and the exit code is non-zero, so the
@@ -147,5 +148,6 @@ command drops straight into CI:
     GH_TOKEN: ${{ github.token }}
 ```
 
-Note that `verify` checks conformance of the *claims*; re-running the gates
-(as this repository's CI does) is what checks their truth.
+Note that gate results and human review remain self-attested claims; re-running
+the gates (as this repository's CI does) is what checks the gate claims. The
+changed-line count is read directly from the pull request rather than metadata.

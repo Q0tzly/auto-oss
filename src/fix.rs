@@ -102,6 +102,17 @@ pub fn run(args: FixArgs) -> Result<()> {
             .map(|k| (k.clone(), GateResult::Skipped))
             .collect()
     } else {
+        if !policy.gates.is_empty() {
+            tracker.set("awaiting-gate-approval");
+            if !confirm_gate_execution(&policy)? {
+                tracker.set("aborted");
+                eprintln!(
+                    "==> aborted before gates; nothing submitted (workdir kept at {})",
+                    workdir.display()
+                );
+                return Ok(());
+            }
+        }
         tracker.set("gates");
         gates::run_all(&policy.gates, &workdir)?
     };
@@ -180,10 +191,29 @@ fn validate_request(policy: &Policy, args: &FixArgs) -> Result<()> {
             policy.accepts.scopes.join(", ")
         );
     }
-    if policy.require.reproduction && args.scope == "bug-fix" && args.repro.is_none() {
+    if policy.require.reproduction
+        && args.scope == "bug-fix"
+        && args
+            .repro
+            .as_deref()
+            .is_none_or(|repro| repro.trim().is_empty())
+    {
         bail!("this repository requires reproduction steps for bug fixes; pass --repro");
     }
     Ok(())
+}
+
+fn confirm_gate_execution(policy: &Policy) -> Result<bool> {
+    if policy.gates.is_empty() {
+        return Ok(true);
+    }
+
+    eprintln!("\n==> repository-controlled gates");
+    for (name, command) in &policy.gates {
+        eprintln!("    {name}: {command}");
+    }
+    eprintln!("    Every gate above runs as a shell command on this machine.");
+    confirm("Run these gates?")
 }
 
 /// SPEC §4: clients SHOULD respect declared limits without server-side
@@ -519,6 +549,27 @@ mod tests {
         let title = pr_title(&args, None);
         assert!(title.starts_with("docs: あ"));
         assert!(title.ends_with('…'));
+    }
+
+    #[test]
+    fn request_validation_rejects_empty_feedback_and_reproduction() {
+        let policy = policy::parse(
+            "version: 0\naccepts:\n  scopes: [bug-fix]\nrequire:\n  reproduction: true\n",
+        )
+        .unwrap();
+        let mut args = FixArgs {
+            repo: String::new(),
+            feedback: "  ".into(),
+            scope: "bug-fix".into(),
+            repro: None,
+            backend: None,
+            dry_run: true,
+        };
+        assert!(validate_request(&policy, &args).is_err());
+
+        args.feedback = "it fails".into();
+        args.repro = Some("  ".into());
+        assert!(validate_request(&policy, &args).is_err());
     }
 
     #[test]

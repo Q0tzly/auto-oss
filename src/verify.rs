@@ -56,8 +56,9 @@ pub fn run(pr: &str) -> Result<()> {
              the submission violates SPEC §1"
         ),
     };
+    let changed_lines = pr_changed_lines(&owner, &repo, number)?;
 
-    let failures = check(&policy, &block);
+    let failures = check(&policy, &block, changed_lines);
     for f in &failures {
         println!("✗ {f}");
     }
@@ -69,7 +70,7 @@ pub fn run(pr: &str) -> Result<()> {
     }
 }
 
-fn check(policy: &Policy, block: &MetaBlock) -> Vec<String> {
+fn check(policy: &Policy, block: &MetaBlock, changed_lines: u64) -> Vec<String> {
     let mut failures = Vec::new();
     if !policy.accepts.scopes.iter().any(|s| s == &block.scope) {
         failures.push(format!(
@@ -90,6 +91,13 @@ fn check(policy: &Policy, block: &MetaBlock) -> Vec<String> {
     if policy.require.reproduction && block.scope == "bug-fix" && block.reproduction.is_none() {
         failures.push("policy requires reproduction steps for bug fixes".into());
     }
+    if let Some(max) = policy.accepts.max_diff_lines {
+        if changed_lines > max {
+            failures.push(format!(
+                "pull request changes {changed_lines} lines; policy maximum is {max}"
+            ));
+        }
+    }
     for gate in policy.gates.keys() {
         match block.gates.get(gate).map(String::as_str) {
             None => failures.push(format!("declared gate `{gate}` is not reported")),
@@ -100,6 +108,21 @@ fn check(policy: &Policy, block: &MetaBlock) -> Vec<String> {
         }
     }
     failures
+}
+
+fn pr_changed_lines(owner: &str, repo: &str, number: u64) -> Result<u64> {
+    let raw = gh_out(&[
+        "api",
+        &format!("repos/{owner}/{repo}/pulls/{number}"),
+        "-q",
+        ".additions + .deletions",
+    ])?;
+    raw.trim().parse().with_context(|| {
+        format!(
+            "GitHub returned an invalid changed-line count `{}`",
+            raw.trim()
+        )
+    })
 }
 
 /// Extract the YAML between the block markers. Exactly one block is allowed.
@@ -181,7 +204,7 @@ mod tests {
         let b = block(
             "scope: docs\nfeedback: |\n  text\nagent:\n  backend: claude-code\ngates:\n  test: pass\nhuman_reviewed: true\n",
         );
-        assert!(check(&test_policy(), &b).is_empty());
+        assert!(check(&test_policy(), &b, 10).is_empty());
     }
 
     #[test]
@@ -189,7 +212,7 @@ mod tests {
         let b = block(
             "scope: feature\nfeedback: \"\"\nagent:\n  backend: \"\"\ngates: {}\nhuman_reviewed: false\n",
         );
-        let failures = check(&test_policy(), &b);
+        let failures = check(&test_policy(), &b, 10);
         assert_eq!(
             failures.len(),
             5,
@@ -202,9 +225,23 @@ mod tests {
         let b = block(
             "scope: docs\nfeedback: |\n  text\nagent:\n  backend: human\ngates:\n  test: fail\nhuman_reviewed: true\n",
         );
-        let failures = check(&test_policy(), &b);
+        let failures = check(&test_policy(), &b, 10);
         assert_eq!(failures.len(), 1);
         assert!(failures[0].contains("gate `test`"));
+    }
+
+    #[test]
+    fn oversized_pull_request_is_a_violation() {
+        let policy =
+            policy::parse("version: 0\naccepts:\n  scopes: [docs]\n  max_diff_lines: 20\n")
+                .unwrap();
+        let b =
+            block("scope: docs\nfeedback: text\nagent:\n  backend: human\nhuman_reviewed: true\n");
+        assert!(check(&policy, &b, 20).is_empty());
+        let failures = check(&policy, &b, 21);
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("21 lines"));
+        assert!(failures[0].contains("maximum is 20"));
     }
 
     #[test]
