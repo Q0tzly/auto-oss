@@ -10,7 +10,7 @@ corresponding version-boundary commits.
 
 ## [Unreleased]
 
-## [0.1.4] - 2026-07-21
+## [0.1.5] - 2026-07-21
 
 ### Added
 
@@ -20,6 +20,10 @@ corresponding version-boundary commits.
   and titles in submissions.
 - Added network-free CLI integration fixtures using a fake home directory,
   local git repositories, and a deterministic custom backend.
+- Added optional model configuration for Claude Code and custom backends, with
+  the configured model disclosed in submission metadata.
+- Added `metadata.language` so repositories can request a language for
+  submission titles and summaries while retaining feedback verbatim.
 
 ### Changed
 
@@ -28,6 +32,10 @@ corresponding version-boundary commits.
   gates, with the wait and abort states recorded by the run tracker.
 - Made GitHub policy-fetch failures explain the likely network or repository
   problem instead of surfacing only the underlying `curl` error.
+- Made parallel `fix` runs use distinct work directories, branch names, and
+  status files, and append safely to the submission log.
+- Expanded this repository's accepted scopes to include `feature` and
+  `refactor`, with a 300-line limit.
 
 ### Fixed
 
@@ -106,8 +114,8 @@ corresponding version-boundary commits.
 - Established CC BY 4.0 licensing for the specification and dual MIT or
   Apache-2.0 licensing for the implementation.
 
-[Unreleased]: https://github.com/q0tzly/auto-oss/compare/v0.1.4...HEAD
-[0.1.4]: https://github.com/q0tzly/auto-oss/compare/v0.1.3...v0.1.4
+[Unreleased]: https://github.com/q0tzly/auto-oss/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/q0tzly/auto-oss/compare/v0.1.3...v0.1.5
 [0.1.3]: https://github.com/q0tzly/auto-oss/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/q0tzly/auto-oss/compare/80cd0fb...v0.1.2
 [0.1.1]: https://github.com/q0tzly/auto-oss/compare/7868337...80cd0fb
