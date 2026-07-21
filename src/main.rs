@@ -65,6 +65,13 @@ enum Cmd {
     },
     /// Show recent and in-progress fix runs
     Status,
+    /// Pick a `fix` run back up after it was interrupted (Ctrl-C, closed
+    /// terminal, ...) before reaching a terminal phase. Find the work
+    /// directory with `autos status`.
+    Resume {
+        /// The interrupted run's work directory, as shown by `autos status`
+        workdir: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -73,6 +80,7 @@ fn main() -> Result<()> {
         Cmd::Init { force } => init_cmd::run(force),
         Cmd::Verify { pr } => verify::run(&pr),
         Cmd::Status => status::run(),
+        Cmd::Resume { workdir } => fix::resume(&workdir),
         Cmd::Fix {
             repo,
             feedback,

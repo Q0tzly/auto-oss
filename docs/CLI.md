@@ -97,7 +97,33 @@ has reached the limit.
 List recent `fix` runs — including ones still running in another terminal —
 with their current phase (`cloning`, `generating`, `awaiting-gate-approval`,
 `gates`, `awaiting-approval`, `submitted-pr`, …). Run files live in
-`~/.auto-oss/runs/` and are pruned after seven days.
+`~/.auto-oss/runs/` and are pruned after seven days. A run stuck in a
+non-terminal phase (interrupted by Ctrl-C, a closed terminal, a crash) is
+shown with the exact `autos resume` command to pick it back up.
+
+### `autos resume <workdir>`
+
+Continue a `fix` run that was interrupted before it reached a terminal
+phase (`submitted-pr`, `submitted-issue`, `aborted`, `failed`,
+`dry-run-done`) — most commonly, a Ctrl-C at the gate confirmation prompt
+that killed the process before the wait, submission, or decline was
+recorded. `<workdir>` is the work directory `autos status` prints for that
+run.
+
+Resuming does **not** re-clone or re-run the backend: the clone, and
+whatever the backend already wrote to it, are read as they are from disk.
+The feedback, scope, and other original arguments are restored from the
+tracked run, along with the backend's title and change summary if it had
+finished producing them. From there the pipeline runs exactly as it would
+for a fresh `fix` — gates are re-executed (a prior run may have died
+mid-gate, and gates are expected to be idempotent), and nothing is
+submitted without the same confirmations a normal run asks for.
+
+A run whose target policy no longer accepts its scope, or whose work
+directory has been cleaned up, fails clearly rather than resuming into a
+bad state. A run tracked by an older `autos` version (before this field
+existed) can't be resumed automatically — the work directory is still on
+disk to finish by hand.
 
 ### Configuration: `~/.auto-oss/config.yml`
 

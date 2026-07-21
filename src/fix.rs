@@ -5,11 +5,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
 
-use crate::backend;
+use crate::backend::{self, Backend};
 use crate::gates::{self, GateResult};
 use crate::metadata::{self, Submission};
 use crate::policy::{self, Fallback, Policy, PolicyStatus, RepoRef};
-use crate::status::RunTracker;
+use crate::status::{self, NewRun, RunTracker};
 
 pub struct FixArgs {
     pub repo: String,
@@ -20,12 +20,11 @@ pub struct FixArgs {
     pub dry_run: bool,
 }
 
-pub fn run(args: FixArgs) -> Result<()> {
-    let repo = RepoRef::parse(&args.repo)?;
-    let policy = match policy::discover(&repo)? {
+fn discover_policy(repo: &RepoRef) -> Result<Policy> {
+    match policy::discover(repo)? {
         PolicyStatus::OptedIn { policy, found_at } => {
             eprintln!("==> policy found at {found_at}");
-            policy
+            Ok(policy)
         }
         PolicyStatus::NotOptedIn => bail!(
             "{} has not opted in to auto-oss (no policy file); \
@@ -37,7 +36,12 @@ pub fn run(args: FixArgs) -> Result<()> {
             "{}: policy file {found_at} is unusable ({reason}); treating as not opted in",
             repo.short_name()
         ),
-    };
+    }
+}
+
+pub fn run(args: FixArgs) -> Result<()> {
+    let repo = RepoRef::parse(&args.repo)?;
+    let policy = discover_policy(&repo)?;
 
     validate_request(&policy, &args)?;
     if !args.dry_run {
@@ -47,7 +51,16 @@ pub fn run(args: FixArgs) -> Result<()> {
     let backend = backend::resolve(args.backend.as_deref(), &config)?;
 
     let workdir = make_workdir(&repo)?;
-    let mut tracker = RunTracker::start(&repo.short_name(), &workdir);
+    let mut tracker = RunTracker::start(NewRun {
+        repo: &repo.short_name(),
+        repo_arg: &args.repo,
+        workdir: &workdir,
+        feedback: &args.feedback,
+        scope: &args.scope,
+        repro: args.repro.as_deref(),
+        backend: args.backend.as_deref(),
+        dry_run: args.dry_run,
+    });
     eprintln!(
         "==> cloning {} into {}",
         repo.short_name(),
@@ -66,27 +79,148 @@ pub fn run(args: FixArgs) -> Result<()> {
         policy.metadata.language.as_deref(),
     );
 
-    // A backend failure or a no-op patch is not a hard error: SPEC's
-    // fallback promise ("when a patch cannot be produced... submitted as an
-    // issue") applies here too, so both are routed through the same
-    // "not qualified" path as an oversized diff or a failing gate, rather
-    // than aborting with nothing to show for the run.
-    let mut generated = backend::Generated::default();
-    let mut diff = String::new();
-    let mut failure_reason: Option<String> = None;
-    match backend.generate(&workdir, &prompt) {
-        Ok(g) => generated = g,
+    // A backend failure is not a hard error: SPEC's fallback promise
+    // ("when a patch cannot be produced... submitted as an issue") applies
+    // here too, so it's routed through continue_after_generation exactly
+    // like a no-op patch, an oversized diff, or a failing gate.
+    let (generated, failure_reason) = match backend.generate(&workdir, &prompt) {
+        Ok(g) => {
+            tracker.set_generated(g.title.as_deref(), g.summary.as_deref());
+            (g, None)
+        }
         Err(e) => {
             tracker.set("failed");
-            failure_reason = Some(format!(
-                "the `{}` backend failed to produce a patch: {e}",
-                backend.name()
-            ));
+            (
+                backend::Generated::default(),
+                Some(format!(
+                    "the `{}` backend failed to produce a patch: {e}",
+                    backend.name()
+                )),
+            )
         }
+    };
+
+    continue_after_generation(ContinueArgs {
+        repo: &repo,
+        policy: &policy,
+        args: &args,
+        backend: backend.as_ref(),
+        workdir: &workdir,
+        tracker: &mut tracker,
+        generated,
+        failure_reason,
+    })
+}
+
+/// Pick a run back up after this process (or a previous `fix`/`resume`) was
+/// interrupted before it reached a terminal phase. Everything through patch
+/// generation is redone from what is already on disk in `workdir` rather
+/// than re-run: gates are re-executed (they're expected to be idempotent,
+/// and a prior run may have died mid-gate), but the backend is not called
+/// again — its title/summary are restored from the tracked run, and the
+/// diff is read fresh from the clone.
+pub fn resume(workdir_arg: &str) -> Result<()> {
+    let workdir = PathBuf::from(workdir_arg);
+    let Some((path, state)) = status::find_run(&workdir)? else {
+        bail!(
+            "no tracked run found for {}; check `autos status` for the exact workdir",
+            workdir.display()
+        );
+    };
+    if status::is_terminal(&state.phase) {
+        bail!(
+            "the run at {} already finished ({}); nothing to resume",
+            workdir.display(),
+            state.phase
+        );
     }
+    if state.repo_arg.is_empty() {
+        bail!(
+            "the run at {} was tracked by an older version of autos and can't be resumed \
+             automatically; the workdir is still there if you want to finish by hand",
+            workdir.display()
+        );
+    }
+    if !workdir.exists() {
+        bail!(
+            "work directory {} no longer exists; nothing to resume",
+            workdir.display()
+        );
+    }
+
+    let args = FixArgs {
+        repo: state.repo_arg.clone(),
+        feedback: state.feedback.clone(),
+        scope: state.scope.clone(),
+        repro: state.repro.clone(),
+        backend: state.backend.clone(),
+        dry_run: state.dry_run,
+    };
+    let repo = RepoRef::parse(&args.repo)?;
+    // Re-validated against whatever the policy says now, not what it said
+    // when the run started — a resume days later should see current rules.
+    let policy = discover_policy(&repo)?;
+    validate_request(&policy, &args)?;
+    let config = backend::load_config()?;
+    let backend = backend::resolve(args.backend.as_deref(), &config)?;
+    let generated = backend::Generated {
+        title: state.title.clone(),
+        summary: state.summary.clone(),
+    };
+    let mut tracker = RunTracker::attach(path, state.clone());
+
+    eprintln!(
+        "==> resuming {} from phase `{}`",
+        repo.short_name(),
+        state.phase
+    );
+    eprintln!("    workdir: {}", workdir.display());
+
+    continue_after_generation(ContinueArgs {
+        repo: &repo,
+        policy: &policy,
+        args: &args,
+        backend: backend.as_ref(),
+        workdir: &workdir,
+        tracker: &mut tracker,
+        generated,
+        failure_reason: None,
+    })
+}
+
+struct ContinueArgs<'a> {
+    repo: &'a RepoRef,
+    policy: &'a Policy,
+    args: &'a FixArgs,
+    backend: &'a dyn Backend,
+    workdir: &'a Path,
+    tracker: &'a mut RunTracker,
+    generated: backend::Generated,
+    /// Some(reason) skips staging/diffing entirely — set when the backend
+    /// itself already failed and there is nothing new to look at.
+    failure_reason: Option<String>,
+}
+
+/// Everything from "the backend has had its turn" through submission.
+/// Shared by a fresh `run()` and by `resume()`, which reconstructs the same
+/// inputs from a previous run's tracked state instead of re-cloning and
+/// re-generating.
+fn continue_after_generation(ca: ContinueArgs) -> Result<()> {
+    let ContinueArgs {
+        repo,
+        policy,
+        args,
+        backend,
+        workdir,
+        tracker,
+        generated,
+        mut failure_reason,
+    } = ca;
+
+    let mut diff = String::new();
     if failure_reason.is_none() {
-        git(&workdir, &["add", "-A"])?;
-        diff = git_out(&workdir, &["diff", "--cached"])?;
+        git(workdir, &["add", "-A"])?;
+        diff = git_out(workdir, &["diff", "--cached"])?;
         if diff.trim().is_empty() {
             tracker.set("failed");
             failure_reason = Some("the backend made no changes to the repository".to_string());
@@ -121,7 +255,7 @@ pub fn run(args: FixArgs) -> Result<()> {
     } else {
         if !policy.gates.is_empty() {
             tracker.set("awaiting-gate-approval");
-            if !confirm_gate_execution(&policy)? {
+            if !confirm_gate_execution(policy)? {
                 tracker.set("aborted");
                 eprintln!(
                     "==> aborted before gates; nothing submitted (workdir kept at {})",
@@ -131,13 +265,13 @@ pub fn run(args: FixArgs) -> Result<()> {
             }
         }
         tracker.set("gates");
-        gates::run_all(&policy.gates, &workdir)?
+        gates::run_all(&policy.gates, workdir)?
     };
     let qualified = failure_reason.is_none() && !oversized && gates::all_pass(&gate_results);
 
-    let title = pr_title(&args, generated.title.as_deref());
+    let title = pr_title(args, generated.title.as_deref());
     let body = submission_body(BodyInputs {
-        args: &args,
+        args,
         backend_name: backend.name(),
         model: backend.model(),
         summary: generated.summary.as_deref(),
@@ -162,7 +296,7 @@ pub fn run(args: FixArgs) -> Result<()> {
         return Ok(());
     }
 
-    let RepoRef::GitHub { owner, repo: name } = &repo else {
+    let RepoRef::GitHub { owner, repo: name } = repo else {
         tracker.set("dry-run-done");
         eprintln!("==> local repository: submission not applicable; review the diff in place");
         eprintln!("    workdir: {}", workdir.display());
@@ -171,9 +305,9 @@ pub fn run(args: FixArgs) -> Result<()> {
 
     if !qualified {
         tracker.set("awaiting-approval");
-        if submit_fallback(&policy, owner, name, &title, &body_path)? {
+        if submit_fallback(policy, owner, name, &title, &body_path)? {
             tracker.set("submitted-issue");
-            record_submission(&repo)?;
+            record_submission(repo)?;
         } else {
             tracker.set("aborted");
         }
@@ -190,12 +324,12 @@ pub fn run(args: FixArgs) -> Result<()> {
         return Ok(());
     }
     tracker.set("submitting");
-    if let Err(e) = submit_pr(&policy, owner, name, &args, &workdir, &title, &body_path) {
+    if let Err(e) = submit_pr(policy, owner, name, args, workdir, &title, &body_path) {
         tracker.set("failed");
         return Err(e);
     }
     tracker.set("submitted-pr");
-    record_submission(&repo)
+    record_submission(repo)
 }
 
 fn validate_request(policy: &Policy, args: &FixArgs) -> Result<()> {

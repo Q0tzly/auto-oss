@@ -90,6 +90,29 @@ cargo install auto-oss   # `autos` バイナリが入る
 (`cloning`、`generating`、`awaiting-gate-approval`、`gates`、
 `awaiting-approval`、`submitted-pr` …)
 付きで一覧する。記録は `~/.auto-oss/runs/` にあり、7 日で削除される。
+終了フェーズに達していない run(Ctrl-C・端末を閉じた・クラッシュ)は、
+再開に使う正確な `autos resume` コマンドと一緒に表示される。
+
+### `autos resume <workdir>`
+
+終了フェーズ(`submitted-pr`・`submitted-issue`・`aborted`・`failed`・
+`dry-run-done`)に達する前に中断された `fix` の実行を再開する——典型的には、
+ゲート確認プロンプトで Ctrl-C を押してプロセスが死に、待機・提出・拒否の
+いずれも記録されなかったケース。`<workdir>` は `autos status` がその実行に
+対して表示する workdir。
+
+再開は clone も backend の再実行も**しない**: clone と、backend がそこまでに
+書き込んだ内容を、ディスク上にある状態のまま読む。フィードバック・scope・
+その他の元の引数は追跡された実行から復元され、backend がタイトルと変更概要を
+生成し終えていればそれも復元される。そこから先は通常の `fix` とまったく同じ
+パイプラインが走る——ゲートは再実行される(以前の実行がゲートの途中で死んだ
+かもしれないし、ゲートは冪等であることが前提)。提出は通常の実行と同じ確認
+なしには行われない。
+
+対象 policy がその scope をもう受け付けなくなっている場合や、work directory が
+片付けられてしまっている場合は、おかしな状態で再開するのではなく、はっきりと
+失敗する。この機能が存在する前の `autos` が記録した実行は自動的には再開できない
+——work directory はディスクに残っているので、手作業で仕上げることはできる。
 
 ### 設定: `~/.auto-oss/config.yml`
 

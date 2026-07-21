@@ -12,6 +12,10 @@ corresponding version-boundary commits.
 
 ### Added
 
+- Added `autos resume <workdir>` to pick an interrupted `fix` run back up
+  (Ctrl-C, a closed terminal, a crash) without re-cloning or re-running the
+  backend. `autos status` now prints the exact command for any resumable
+  run.
 - Implemented the `discussion` fallback via the GitHub GraphQL API, picking a
   discussion category by preference order and reporting clearly when a
   repository has none.
