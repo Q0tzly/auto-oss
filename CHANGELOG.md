@@ -10,6 +10,11 @@ corresponding version-boundary commits.
 
 ## [Unreleased]
 
+### Changed
+
+- Include the `auto-oss` client version in pull-request and fallback issue
+  bodies.
+
 ## [0.1.5] - 2026-07-21
 
 ### Added
