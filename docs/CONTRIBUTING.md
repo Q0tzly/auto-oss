@@ -26,16 +26,25 @@ This repository itself accepts submissions under the auto-oss protocol — see
 [auto-oss.yml](../auto-oss.yml) for the policy. Trying `autos fix` on this repo
 is encouraged; that is what dogfooding means.
 
+## Branches
+
+Day-to-day development happens on `dev` — commit there as work lands, no
+need to touch `main` in between. `main` only moves at release time: `dev`
+is merged into it as part of the release steps below, so `main` always
+points at a tagged (or about-to-be-tagged) release.
+
 ## Releases
 
 Releases are tag-driven. Before creating a release tag:
 
-1. Move the release's entries from `Unreleased` into a versioned section in
-   [CHANGELOG.md](../CHANGELOG.md), using `## [x.y.z] - YYYY-MM-DD`.
+1. On `dev`: move the release's entries from `Unreleased` into a versioned
+   section in [CHANGELOG.md](../CHANGELOG.md), using
+   `## [x.y.z] - YYYY-MM-DD`.
 2. Update the comparison links at the bottom of the changelog.
 3. Bump the version in `Cargo.toml` and refresh `Cargo.lock`.
-4. Merge those changes and confirm CI passes.
-5. Only then create and push the matching `vx.y.z` tag.
+4. Commit those changes on `dev` and confirm CI passes.
+5. Merge `dev` into `main` (fast-forward) and push `main`.
+6. Only then create and push the matching `vx.y.z` tag.
 
 The release workflow refuses to publish when the tag, crate version, and
 changelog entry do not agree.
