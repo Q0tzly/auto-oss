@@ -65,28 +65,45 @@ pub fn run(args: FixArgs) -> Result<()> {
         policy.accepts.max_diff_lines,
         policy.metadata.language.as_deref(),
     );
-    let generated = match backend.generate(&workdir, &prompt) {
-        Ok(g) => g,
+
+    // A backend failure or a no-op patch is not a hard error: SPEC's
+    // fallback promise ("when a patch cannot be produced... submitted as an
+    // issue") applies here too, so both are routed through the same
+    // "not qualified" path as an oversized diff or a failing gate, rather
+    // than aborting with nothing to show for the run.
+    let mut generated = backend::Generated::default();
+    let mut diff = String::new();
+    let mut failure_reason: Option<String> = None;
+    match backend.generate(&workdir, &prompt) {
+        Ok(g) => generated = g,
         Err(e) => {
             tracker.set("failed");
-            return Err(e);
+            failure_reason = Some(format!(
+                "the `{}` backend failed to produce a patch: {e}",
+                backend.name()
+            ));
         }
-    };
-
-    git(&workdir, &["add", "-A"])?;
-    let diff = git_out(&workdir, &["diff", "--cached"])?;
-    if diff.trim().is_empty() {
-        tracker.set("failed");
-        bail!("backend produced no changes; nothing to submit");
+    }
+    if failure_reason.is_none() {
+        git(&workdir, &["add", "-A"])?;
+        diff = git_out(&workdir, &["diff", "--cached"])?;
+        if diff.trim().is_empty() {
+            tracker.set("failed");
+            failure_reason = Some("the backend made no changes to the repository".to_string());
+        } else {
+            eprintln!("\n{diff}");
+        }
     }
     let changed = diff_lines(&diff);
-    eprintln!("\n{diff}");
-    eprintln!("==> {changed} changed lines");
+    if failure_reason.is_none() {
+        eprintln!("==> {changed} changed lines");
+    }
 
-    let oversized = policy
-        .accepts
-        .max_diff_lines
-        .is_some_and(|max| changed > max);
+    let oversized = failure_reason.is_none()
+        && policy
+            .accepts
+            .max_diff_lines
+            .is_some_and(|max| changed > max);
     if oversized {
         eprintln!(
             "==> patch exceeds max_diff_lines ({} > {}); downgrading to fallback",
@@ -95,7 +112,7 @@ pub fn run(args: FixArgs) -> Result<()> {
         );
     }
 
-    let gate_results = if oversized {
+    let gate_results = if failure_reason.is_some() || oversized {
         policy
             .gates
             .keys()
@@ -116,18 +133,19 @@ pub fn run(args: FixArgs) -> Result<()> {
         tracker.set("gates");
         gates::run_all(&policy.gates, &workdir)?
     };
-    let qualified = !oversized && gates::all_pass(&gate_results);
+    let qualified = failure_reason.is_none() && !oversized && gates::all_pass(&gate_results);
 
     let title = pr_title(&args, generated.title.as_deref());
-    let body = submission_body(
-        &args,
-        backend.name(),
-        backend.model(),
-        generated.summary.as_deref(),
-        &gate_results,
+    let body = submission_body(BodyInputs {
+        args: &args,
+        backend_name: backend.name(),
+        model: backend.model(),
+        summary: generated.summary.as_deref(),
+        gate_results: &gate_results,
         qualified,
-        &diff,
-    );
+        diff: &diff,
+        failure_reason: failure_reason.as_deref(),
+    });
     let body_path = workdir.join(".auto-oss-body.md");
     std::fs::write(&body_path, &body)?;
 
@@ -299,15 +317,28 @@ fn truncate_chars(s: &str, max_bytes: usize) -> String {
     out
 }
 
-fn submission_body(
-    args: &FixArgs,
-    backend_name: &str,
-    model: Option<&str>,
-    summary: Option<&str>,
-    gate_results: &[(String, GateResult)],
+struct BodyInputs<'a> {
+    args: &'a FixArgs,
+    backend_name: &'a str,
+    model: Option<&'a str>,
+    summary: Option<&'a str>,
+    gate_results: &'a [(String, GateResult)],
     qualified: bool,
-    diff: &str,
-) -> String {
+    diff: &'a str,
+    failure_reason: Option<&'a str>,
+}
+
+fn submission_body(inputs: BodyInputs) -> String {
+    let BodyInputs {
+        args,
+        backend_name,
+        model,
+        summary,
+        gate_results,
+        qualified,
+        diff,
+        failure_reason,
+    } = inputs;
     let block = metadata::render_block(&Submission {
         scope: &args.scope,
         feedback: &args.feedback,
@@ -337,6 +368,12 @@ fn submission_body(
              this repository's `auto-oss.yml` policy. A human reviewed it before \
              submission.\n\n{block}\n"
         )
+    } else if let Some(reason) = failure_reason {
+        format!(
+            "{summary_section}{feedback_section}This report was collected under the \
+             [auto-oss protocol](https://github.com/q0tzly/auto-oss) by {client}. No patch \
+             could be submitted as a pull request: {reason}.\n\n{block}\n"
+        )
     } else {
         format!(
             "{summary_section}{feedback_section}This report was collected under the \
@@ -361,14 +398,7 @@ fn submit_fallback(
             eprintln!("==> submission did not qualify and fallback is `none`; stopping");
             Ok(false)
         }
-        Fallback::Discussion => {
-            eprintln!(
-                "==> fallback `discussion` is not supported by this client yet; \
-                 the prepared body is at {}",
-                body_path.display()
-            );
-            Ok(false)
-        }
+        Fallback::Discussion => submit_discussion(owner, name, title, body_path),
         Fallback::Issue => {
             if !confirm("Patch did not qualify for a PR. Submit the report as an issue instead?")? {
                 eprintln!("==> aborted; nothing submitted");
@@ -393,6 +423,90 @@ fn submit_fallback(
             Ok(true)
         }
     }
+}
+
+/// Submit a fallback report as a GitHub Discussion via the GraphQL API (the
+/// REST API cannot create discussions). Picks a category by a fixed
+/// preference order since the policy does not name one; falls back to the
+/// first category the repository has. Ok(false) means nothing was created
+/// (Discussions disabled, no categories, or the user declined) — the caller
+/// treats that the same as a declined issue fallback.
+fn submit_discussion(owner: &str, name: &str, title: &str, body_path: &Path) -> Result<bool> {
+    const LOOKUP: &str = "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){id discussionCategories(first:25){nodes{id name}}}}";
+    let raw = gh_out(&[
+        "api",
+        "graphql",
+        "-f",
+        &format!("query={LOOKUP}"),
+        "-f",
+        &format!("owner={owner}"),
+        "-f",
+        &format!("name={name}"),
+    ])?;
+    let json: serde_json::Value =
+        serde_json::from_str(&raw).context("parsing discussion category lookup")?;
+    let Some(repo_id) = json["data"]["repository"]["id"].as_str() else {
+        eprintln!(
+            "==> could not resolve a repository id for {owner}/{name}; \
+             falling back to discussions is unavailable"
+        );
+        return Ok(false);
+    };
+    let categories = json["data"]["repository"]["discussionCategories"]["nodes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if categories.is_empty() {
+        eprintln!(
+            "==> {owner}/{name} has no discussion categories (Discussions may be disabled); \
+             cannot file a fallback discussion. The prepared body is at {}",
+            body_path.display()
+        );
+        return Ok(false);
+    }
+    let preferred = ["ideas", "feedback", "general", "q&a"];
+    let category = preferred
+        .iter()
+        .find_map(|want| {
+            categories.iter().find(|c| {
+                c["name"]
+                    .as_str()
+                    .is_some_and(|n| n.eq_ignore_ascii_case(want))
+            })
+        })
+        .unwrap_or(&categories[0]);
+    let category_id = category["id"].as_str().unwrap_or_default();
+    let category_name = category["name"].as_str().unwrap_or("unknown");
+
+    if !confirm(&format!(
+        "Submit the report as a discussion in category `{category_name}` instead?"
+    ))? {
+        eprintln!("==> aborted; nothing submitted");
+        return Ok(false);
+    }
+
+    const CREATE: &str = "mutation($repoId:ID!,$catId:ID!,$title:String!,$body:String!){createDiscussion(input:{repositoryId:$repoId,categoryId:$catId,title:$title,body:$body}){discussion{url}}}";
+    let raw = gh_out(&[
+        "api",
+        "graphql",
+        "-f",
+        &format!("query={CREATE}"),
+        "-f",
+        &format!("repoId={repo_id}"),
+        "-f",
+        &format!("catId={category_id}"),
+        "-f",
+        &format!("title={title}"),
+        "-F",
+        &format!("body=@{}", body_path.display()),
+    ])?;
+    let json: serde_json::Value =
+        serde_json::from_str(&raw).context("parsing discussion creation response")?;
+    let Some(url) = json["data"]["createDiscussion"]["discussion"]["url"].as_str() else {
+        bail!("failed to create discussion: {raw}");
+    };
+    eprintln!("{url}");
+    Ok(true)
 }
 
 fn submit_pr(

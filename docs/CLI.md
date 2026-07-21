@@ -72,9 +72,18 @@ The pipeline, in order:
    request is opened cross-repository. Either way the submission comes from
    **your** account, with the SPEC §3 metadata block embedded, and the
    policy's label applied best-effort.
-8. **Fallback.** If gates failed or the diff was oversized, the collected
-   context (and the partial diff) is submitted as a structured issue instead
-   — when the policy's `fallback` says so, and again only after confirmation.
+8. **Fallback.** Nothing here is a hard failure: an oversized diff, a
+   failing gate, a backend that errors out, or a backend that makes no
+   changes at all are all treated the same — the collected context (feedback,
+   reproduction, whatever partial diff exists, and why it didn't qualify) is
+   offered as the policy's `fallback`, again only after you confirm:
+   - `issue` (default) — files a GitHub issue.
+   - `discussion` — creates a GitHub Discussion via the GraphQL API, in a
+     category picked by preference (`ideas`, `feedback`, `general`, `q&a`,
+     else whatever the repository has first). If the repository has no
+     discussion categories (Discussions disabled), this is reported and
+     nothing is filed.
+   - `none` — nothing is submitted; the local diff and body are left on disk.
 
 Local repositories run the same pipeline but stop before submission.
 

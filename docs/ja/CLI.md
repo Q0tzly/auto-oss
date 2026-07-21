@@ -67,9 +67,16 @@ cargo install auto-oss   # `autos` バイナリが入る
    なければ fork を作ってクロスリポジトリで PR。どちらも**あなたの**
    アカウントからの提出で、SPEC §3 のメタデータブロックが埋め込まれ、
    policy のラベルが best-effort で付く。
-8. **fallback。** ゲート不通過・サイズ超過の場合、収集した文脈(と部分 diff)
-   を構造化 Issue として提出 — policy の `fallback` が許す場合のみ、これも
-   確認後に。
+8. **fallback。** ここでハードエラーになるものはない: diff 超過・ゲート
+   不通過・backend のエラー・backend が何も変更しなかった場合、すべて同じ
+   扱いになる。収集した文脈(フィードバック・再現手順・あれば部分 diff・
+   不合格の理由)を、policy の `fallback` に従って提出する(これも確認後に):
+   - `issue`(デフォルト)— GitHub issue を作成。
+   - `discussion` — GraphQL API 経由で GitHub Discussion を作成。カテゴリは
+     優先順(`ideas`・`feedback`・`general`・`q&a`、なければリポジトリの
+     先頭カテゴリ)で選ぶ。discussion カテゴリが存在しない(Discussions
+     無効)場合はその旨を表示し、何も提出しない。
+   - `none` — 何も提出しない。ローカルの diff と本文はディスクに残る。
 
 ローカルリポジトリでも同じパイプラインが走るが、提出の手前で停止する。
 

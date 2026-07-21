@@ -10,10 +10,25 @@ corresponding version-boundary commits.
 
 ## [Unreleased]
 
+### Added
+
+- Implemented the `discussion` fallback via the GitHub GraphQL API, picking a
+  discussion category by preference order and reporting clearly when a
+  repository has none.
+- Added a Japanese translation of `SECURITY.md`.
+
 ### Changed
 
 - Include the `auto-oss` client version in pull-request and fallback issue
   bodies.
+- Routed a backend failure or a no-op patch through the same policy
+  `fallback` as an oversized diff or a failing gate, instead of aborting
+  with a hard error and nothing to show for the run.
+- Reworded claims of contributions being "trustworthy" to describe what is
+  actually checkable: compliance with a repository's declared policy, with
+  `autos verify` re-deriving diff size independently rather than trusting
+  the submission's own numbers. Gate-pass and human-review claims remain
+  self-reported without the repository's own CI re-running them.
 
 ## [0.1.5] - 2026-07-21
 

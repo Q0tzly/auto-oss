@@ -8,8 +8,13 @@ in advance by publishing an `auto-oss.yml` policy file.
 Existing automation (OpenHands Resolver, Copilot coding agent, Sentry Seer)
 works for the repository's *owners*. auto-oss is the other direction: the
 *outside user* is the starting point, and the protocol exists so that
-agent-made contributions arrive in a form maintainers can trust — opt-in only,
+agent-made contributions arrive already screened against conditions the
+maintainer set, and mechanically identifiable as such — opt-in only,
 quality-gated, disclosed, and always with a human as the author of record.
+That's compliance, not a promise of good faith: `autos verify` checks that a
+submission's claims are internally consistent and re-derives the ones it
+practically can (diff size, from GitHub itself), but it cannot see into a
+contributor's intent, and it does not execute the declared gates itself.
 
 - [docs/SPEC.md](docs/SPEC.md) — protocol specification (v0 draft): the
   `auto-oss.yml` policy file and the submission metadata block

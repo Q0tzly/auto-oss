@@ -1,3 +1,5 @@
+English | [日本語](ja/SECURITY.md)
+
 # Security
 
 ## Reporting a vulnerability

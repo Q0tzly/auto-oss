@@ -16,8 +16,13 @@ wires an agent into their own backlog.
 
 Nobody had designed the other direction: the *outside user* who actually
 hits a problem has an agent too. auto-oss exists so that user's agent can
-turn feedback into a patch and deliver it upstream **in a form maintainers
-can trust**.
+turn feedback into a patch and deliver it upstream **already screened
+against conditions the maintainer set, and mechanically identifiable as
+such**. That is a weaker claim than "trustworthy" on purpose: compliance is
+checkable (`autos verify` re-derives what it can — diff size, from GitHub
+itself — instead of taking the submission's word for it), but nothing here
+verifies a contributor's good faith, and gate results themselves are still
+self-reported. See [Security model](#security-model).
 
 ## Position: a protocol, not a tool
 
@@ -148,10 +153,19 @@ v1 candidate.
 
 - `accepts.paths` — path allow/deny lists. Realized after going public:
   a `docs` scope exposes even a project's decision log to rewrites.
-- Sandboxed gate execution on the contributor side.
+- Sandboxed gate execution, on both sides: the contributor's machine runs
+  the target's declared commands (see Security model), and a repository
+  that wants to re-run gates server-side to check claims has no isolated
+  place to do it either.
 - Additional backends (OpenHands, OpenCode).
-- Enforced rate limits, and signatures or reputation for metadata claims
-  (v0 verifies form; CI re-runs verify truth).
+- Receiving-side rate-limit enforcement — `limits.per_author_per_week` is
+  self-enforced by the client today (SPEC's SHOULD), with no check on the
+  repository side that a client is being honest about it.
+- Signatures or reputation for metadata claims that can't be independently
+  re-derived (`human_reviewed`, gate-pass results). `autos verify` already
+  re-derives diff size directly from GitHub rather than trusting the
+  submission's own number; gate-pass and review claims have no such check
+  short of the repository's own CI re-running the same commands.
 - Forges beyond GitHub (GitLab, Codeberg) — the SPEC is already
   forge-agnostic; only the client binds to `gh`.
 
@@ -161,8 +175,12 @@ v1 candidate.
   "external agent PR" controls. Being first with an open, forge-agnostic
   de-facto contract is the defense — absorption of an open standard is a
   form of winning.
-- **False metadata.** `human_reviewed` and gate claims can be forged;
-  receiving-side CI re-execution is the practical mitigation until v1.
+- **False metadata.** `human_reviewed` and gate-pass claims can be forged;
+  `autos verify` checks form and independently re-derives diff size, but it
+  does not execute the declared gates — a repository wiring its own CI to
+  run the same commands its policy declares (as this repository's `ci.yml`
+  does) is the real check. A repository that opts in without doing that is
+  trusting the gate claims outright.
 - **Cold start.** A protocol with no opted-in repositories is a spec sheet.
   Mitigations: dogfooding from day one, and pitching maintainers who are
   publicly drowning in agent spam — for whom the policy file doubles as a
