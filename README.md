@@ -16,6 +16,7 @@ quality-gated, disclosed, and always with a human as the author of record.
 - [docs/CLI.md](docs/CLI.md) — `autos` command reference
 - [docs/DESIGN.md](docs/DESIGN.md) — architecture and design rationale
 - [docs/ja/](docs/ja/) — 日本語版ドキュメント (Japanese translations)
+- [CHANGELOG.md](CHANGELOG.md) — release history
 
 ## Reference CLI: `autos`
 
