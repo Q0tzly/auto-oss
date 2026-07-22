@@ -114,6 +114,9 @@ pub fn resolve(flag: Option<&str>, config: &Config) -> Result<Box<dyn Backend>> 
         "human" => Ok(Box::new(Human)),
         other => {
             if let Some(cfg) = config.backends.get(other) {
+                if cfg.command.is_empty() {
+                    bail!("backend `{other}` in config.yml has an empty command");
+                }
                 if !cfg.command.iter().any(|a| a.contains("{prompt}")) {
                     bail!(
                         "backend `{other}` in config.yml has no `{{prompt}}` placeholder \
@@ -462,6 +465,13 @@ mod tests {
     fn custom_backend_requires_prompt_placeholder() {
         let config: Config =
             serde_yaml::from_str("backends:\n  bad:\n    command: [\"true\"]\n").unwrap();
+        assert!(resolve(Some("bad"), &config).is_err());
+    }
+
+    #[test]
+    fn custom_backend_rejects_empty_command() {
+        let config: Config =
+            serde_yaml::from_str("backends:\n  bad:\n    command: []\n").unwrap();
         assert!(resolve(Some("bad"), &config).is_err());
     }
 
