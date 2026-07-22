@@ -197,11 +197,28 @@ pub fn parse(raw: &str) -> Result<Policy> {
 /// Fetch a URL. Ok(None) means the server answered "no such file" (curl -f
 /// exits 22 on HTTP errors); network failures are Err — an unreachable
 /// repository must not be mistaken for one that has not opted in.
+/// Fetch a URL. Ok(None) means the server answered "no such file" (curl -f
+/// exits 22 on HTTP errors); network failures are Err — an unreachable
+/// repository must not be mistaken for one that has not opted in.
 fn fetch(url: &str) -> Result<Option<String>> {
-    let out = Command::new("curl")
-        .args(["-fsSL", "--max-time", "15", url])
+    let token = Command::new("gh")
+        .args(["auth", "token"])
         .output()
-        .context("running curl (is it installed?)")?;
+        .ok()
+        .and_then(|out| {
+            if out.status.success() {
+                Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+            } else {
+                None
+            }
+        });
+    let mut cmd = Command::new("curl");
+    cmd.args(["-fsSL", "--max-time", "15"]);
+    if let Some(token) = token {
+        cmd.arg("-H").arg(format!("Authorization: Bearer {token}"));
+    }
+    cmd.arg(url);
+    let out = cmd.output().context("running curl (is it installed?)")?;
     if out.status.success() {
         Ok(Some(String::from_utf8_lossy(&out.stdout).into_owned()))
     } else if out.status.code() == Some(22) {
