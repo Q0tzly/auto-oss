@@ -1,9 +1,10 @@
+use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use anyhow::{bail, Result};
 
-use crate::policy;
+use crate::policy::{self, Accepts, Fallback, Limits, MetadataCfg, Policy, Require};
 
 /// Interactively generate an auto-oss.yml in the current directory.
 pub fn run(force: bool) -> Result<()> {
@@ -33,34 +34,54 @@ pub fn run(force: bool) -> Result<()> {
     )?;
     let label = ask("Label for submissions (empty to skip)", "auto-oss")?;
 
-    let mut out = String::from("version: 0\n\naccepts:\n");
-    out.push_str(&format!("  scopes: [{}]\n", scopes.join(", ")));
-    if !max_diff.is_empty() {
+    let max_diff_lines = if max_diff.is_empty() {
+        None
+    } else {
         let n: u64 = max_diff
             .parse()
             .map_err(|_| anyhow::anyhow!("max changed lines must be a number, got `{max_diff}`"))?;
-        out.push_str(&format!("  max_diff_lines: {n}\n"));
+        Some(n)
+    };
+
+    let mut gates = BTreeMap::new();
+    if !build.is_empty() {
+        gates.insert("build".to_string(), build);
     }
-    let gates: Vec<(&str, &String)> = [("build", &build), ("test", &test), ("lint", &lint)]
-        .into_iter()
-        .filter(|(_, cmd)| !cmd.is_empty())
-        .collect();
-    if !gates.is_empty() {
-        out.push_str("\ngates:\n");
-        for (name, cmd) in gates {
-            out.push_str(&format!("  {name}: \"{cmd}\"\n"));
-        }
+    if !test.is_empty() {
+        gates.insert("test".to_string(), test);
     }
-    out.push_str("\nrequire:\n  human_review: true\n");
-    out.push_str(&format!(
-        "  reproduction: {}\n",
-        matches!(repro.as_str(), "y" | "Y" | "yes")
-    ));
-    out.push_str(&format!("\nfallback: {fallback}\n"));
-    if !label.is_empty() {
-        out.push_str(&format!("\nmetadata:\n  label: \"{label}\"\n"));
+    if !lint.is_empty() {
+        gates.insert("lint".to_string(), lint);
     }
 
+    let policy = Policy {
+        version: 0,
+        accepts: Accepts {
+            scopes,
+            max_diff_lines,
+        },
+        gates,
+        require: Require {
+            human_review: true,
+            reproduction: matches!(repro.as_str(), "y" | "Y" | "yes"),
+        },
+        fallback: match fallback.as_str() {
+            "none" => Fallback::None,
+            "discussion" => Fallback::Discussion,
+            _ => Fallback::Issue,
+        },
+        limits: Limits::default(),
+        metadata: if label.is_empty() {
+            MetadataCfg::default()
+        } else {
+            MetadataCfg {
+                label: Some(label),
+                language: None,
+            }
+        },
+    };
+
+    let out = serde_yaml::to_string(&policy)?;
     // Round-trip through the parser so we never write an invalid policy.
     policy::parse(&out)?;
     std::fs::write(target, &out)?;

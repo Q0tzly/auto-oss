@@ -4,34 +4,35 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub const SUPPORTED_VERSION: u64 = 0;
 pub const POLICY_PATHS: [&str; 2] = ["auto-oss.yml", ".github/auto-oss.yml"];
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Policy {
     pub version: u64,
     pub accepts: Accepts,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub gates: BTreeMap<String, String>,
     #[serde(default)]
     pub require: Require,
     #[serde(default)]
     pub fallback: Fallback,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Limits::is_default")]
     pub limits: Limits,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "MetadataCfg::is_default")]
     pub metadata: MetadataCfg,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Accepts {
     pub scopes: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_diff_lines: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Require {
     pub human_review: bool,
@@ -47,7 +48,7 @@ impl Default for Require {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Fallback {
     #[default]
@@ -66,19 +67,32 @@ impl fmt::Display for Fallback {
     }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Limits {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub per_author_per_week: Option<u64>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+impl Limits {
+    pub fn is_default(&self) -> bool {
+        self.per_author_per_week.is_none()
+    }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct MetadataCfg {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
-    /// Language the client SHOULD use for submission titles and summaries
-    /// (e.g. "en"). The feedback itself always stays verbatim.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+}
+
+impl MetadataCfg {
+    pub fn is_default(&self) -> bool {
+        self.label.is_none() && self.language.is_none()
+    }
 }
 
 /// Where a target repository lives.
@@ -197,11 +211,28 @@ pub fn parse(raw: &str) -> Result<Policy> {
 /// Fetch a URL. Ok(None) means the server answered "no such file" (curl -f
 /// exits 22 on HTTP errors); network failures are Err — an unreachable
 /// repository must not be mistaken for one that has not opted in.
+/// Fetch a URL. Ok(None) means the server answered "no such file" (curl -f
+/// exits 22 on HTTP errors); network failures are Err — an unreachable
+/// repository must not be mistaken for one that has not opted in.
 fn fetch(url: &str) -> Result<Option<String>> {
-    let out = Command::new("curl")
-        .args(["-fsSL", "--max-time", "15", url])
+    let token = Command::new("gh")
+        .args(["auth", "token"])
         .output()
-        .context("running curl (is it installed?)")?;
+        .ok()
+        .and_then(|out| {
+            if out.status.success() {
+                Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+            } else {
+                None
+            }
+        });
+    let mut cmd = Command::new("curl");
+    cmd.args(["-fsSL", "--max-time", "15"]);
+    if let Some(token) = token {
+        cmd.arg("-H").arg(format!("Authorization: Bearer {token}"));
+    }
+    cmd.arg(url);
+    let out = cmd.output().context("running curl (is it installed?)")?;
     if out.status.success() {
         Ok(Some(String::from_utf8_lossy(&out.stdout).into_owned()))
     } else if out.status.code() == Some(22) {

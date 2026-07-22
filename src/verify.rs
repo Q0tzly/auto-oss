@@ -88,7 +88,13 @@ fn check(policy: &Policy, block: &MetaBlock, changed_lines: u64) -> Vec<String> 
     if policy.require.human_review && !block.human_reviewed {
         failures.push("policy requires human review but human_reviewed is not true".into());
     }
-    if policy.require.reproduction && block.scope == "bug-fix" && block.reproduction.is_none() {
+    if policy.require.reproduction
+        && block.scope == "bug-fix"
+        && block
+            .reproduction
+            .as_deref()
+            .is_none_or(|s| s.trim().is_empty())
+    {
         failures.push("policy requires reproduction steps for bug fixes".into());
     }
     if let Some(max) = policy.accepts.max_diff_lines {
@@ -242,6 +248,26 @@ mod tests {
         assert_eq!(failures.len(), 1);
         assert!(failures[0].contains("21 lines"));
         assert!(failures[0].contains("maximum is 20"));
+    }
+
+    #[test]
+    fn catches_empty_reproduction_string() {
+        let b = block(
+            "scope: bug-fix\nfeedback: text\nagent:\n  backend: human\nhuman_reviewed: true\nreproduction: \"\"\ngates:\n  test: pass\n",
+        );
+        let failures = check(&test_policy(), &b, 10);
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("reproduction"));
+    }
+
+    #[test]
+    fn catches_whitespace_only_reproduction() {
+        let b = block(
+            "scope: bug-fix\nfeedback: text\nagent:\n  backend: human\nhuman_reviewed: true\nreproduction: \"   \"\ngates:\n  test: pass\n",
+        );
+        let failures = check(&test_policy(), &b, 10);
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("reproduction"));
     }
 
     #[test]

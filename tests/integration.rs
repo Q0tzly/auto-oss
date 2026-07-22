@@ -212,6 +212,20 @@ fn fix_dry_run_uses_custom_backend_without_network_or_claude() {
         stderr.contains("dry run: stopping before submission"),
         "{stderr}"
     );
+    let workdirs: Vec<PathBuf> = fs::read_dir(&fixture.temp)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("auto-oss-"))
+        })
+        .collect();
+    assert_eq!(workdirs.len(), 1, "dry-run workdir should be kept");
+    assert!(
+        workdirs[0].join(".auto-oss-body.md").exists(),
+        "dry-run submission body should remain available for inspection"
+    );
     assert_eq!(
         fs::read_to_string(fixture.repo.join("README.md")).unwrap(),
         "original\n"
