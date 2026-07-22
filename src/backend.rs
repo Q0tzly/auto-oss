@@ -470,8 +470,7 @@ mod tests {
 
     #[test]
     fn custom_backend_rejects_empty_command() {
-        let config: Config =
-            serde_yaml::from_str("backends:\n  bad:\n    command: []\n").unwrap();
+        let config: Config = serde_yaml::from_str("backends:\n  bad:\n    command: []\n").unwrap();
         assert!(resolve(Some("bad"), &config).is_err());
     }
 

@@ -88,7 +88,13 @@ fn check(policy: &Policy, block: &MetaBlock, changed_lines: u64) -> Vec<String> 
     if policy.require.human_review && !block.human_reviewed {
         failures.push("policy requires human review but human_reviewed is not true".into());
     }
-    if policy.require.reproduction && block.scope == "bug-fix" && block.reproduction.as_deref().map_or(true, |s| s.trim().is_empty()) {
+    if policy.require.reproduction
+        && block.scope == "bug-fix"
+        && block
+            .reproduction
+            .as_deref()
+            .is_none_or(|s| s.trim().is_empty())
+    {
         failures.push("policy requires reproduction steps for bug fixes".into());
     }
     if let Some(max) = policy.accepts.max_diff_lines {
