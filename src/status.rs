@@ -129,12 +129,22 @@ impl RunTracker {
             let _ = std::fs::write(path, json);
         }
     }
-}
 
-impl Drop for RunTracker {
-    fn drop(&mut self) {
-        if is_terminal(&self.state.phase) {
-            let path = PathBuf::from(&self.state.workdir);
+    /// Remove a completed run's disposable clone. Callers invoke this only
+    /// after a submission succeeds; dry runs, failures, and user-aborted runs
+    /// keep their workdirs so the user can inspect or finish them by hand.
+    ///
+    /// Status files are user-editable, so never recursively delete an
+    /// arbitrary path read from one. `make_workdir` creates direct children of
+    /// the process temp directory with this prefix; anything else is left
+    /// untouched.
+    pub fn cleanup_submitted_workdir(&self) {
+        let path = Path::new(&self.state.workdir);
+        let is_managed = path.parent() == Some(std::env::temp_dir().as_path())
+            && path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("auto-oss-"));
+        if is_managed {
             let _ = std::fs::remove_dir_all(path);
         }
     }
@@ -300,5 +310,49 @@ mod tests {
         assert!(is_terminal("aborted"));
         assert!(!is_terminal("awaiting-gate-approval"));
         assert!(!is_terminal("gates"));
+    }
+
+    #[test]
+    fn submitted_workdir_cleanup_only_removes_managed_temp_dirs() {
+        let managed = std::env::temp_dir().join(format!(
+            "auto-oss-cleanup-test-{}-{}",
+            std::process::id(),
+            now()
+        ));
+        std::fs::create_dir_all(&managed).unwrap();
+        let tracker = RunTracker {
+            path: None,
+            state: RunState {
+                repo: "a/b".into(),
+                workdir: managed.display().to_string(),
+                phase: "submitted-pr".into(),
+                started: 1,
+                updated: 2,
+                repo_arg: "a/b".into(),
+                feedback: "fixed".into(),
+                scope: "bug-fix".into(),
+                repro: None,
+                backend: None,
+                dry_run: false,
+                title: None,
+                summary: None,
+            },
+        };
+        tracker.cleanup_submitted_workdir();
+        assert!(!managed.exists());
+
+        let unmanaged_parent = std::env::temp_dir().join(format!(
+            "auto-oss-cleanup-parent-{}-{}",
+            std::process::id(),
+            now()
+        ));
+        let unmanaged = unmanaged_parent.join("auto-oss-nested");
+        std::fs::create_dir_all(&unmanaged).unwrap();
+        let mut state = tracker.state.clone();
+        state.workdir = unmanaged.display().to_string();
+        let tracker = RunTracker { path: None, state };
+        tracker.cleanup_submitted_workdir();
+        assert!(unmanaged.exists());
+        std::fs::remove_dir_all(unmanaged_parent).unwrap();
     }
 }

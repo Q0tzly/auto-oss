@@ -308,6 +308,7 @@ fn continue_after_generation(ca: ContinueArgs) -> Result<()> {
         if submit_fallback(policy, owner, name, &title, &body_path)? {
             tracker.set("submitted-issue");
             record_submission(repo)?;
+            tracker.cleanup_submitted_workdir();
         } else {
             tracker.set("aborted");
         }
@@ -329,7 +330,9 @@ fn continue_after_generation(ca: ContinueArgs) -> Result<()> {
         return Err(e);
     }
     tracker.set("submitted-pr");
-    record_submission(repo)
+    record_submission(repo)?;
+    tracker.cleanup_submitted_workdir();
+    Ok(())
 }
 
 fn validate_request(policy: &Policy, args: &FixArgs) -> Result<()> {
