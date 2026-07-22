@@ -10,6 +10,21 @@ corresponding version-boundary commits.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-07-22
+
+### Fixed
+
+- Rejected empty custom-backend command lists before they can cause a panic.
+- Removed only disposable, managed work directories after a successful
+  submission; dry runs, failures, and aborted runs remain available for
+  inspection.
+- Authenticated GitHub policy fetches with the GitHub CLI token when
+  available, allowing discovery in private repositories.
+- Serialized `autos init` policies through `serde_yaml`, correctly escaping
+  quoted and special-character gate commands.
+- Rejected empty or whitespace-only reproduction steps during submission
+  verification when a policy requires them.
+
 ## [0.1.6] - 2026-07-21
 
 ### Added
@@ -147,7 +162,8 @@ corresponding version-boundary commits.
 - Established CC BY 4.0 licensing for the specification and dual MIT or
   Apache-2.0 licensing for the implementation.
 
-[Unreleased]: https://github.com/q0tzly/auto-oss/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/q0tzly/auto-oss/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/q0tzly/auto-oss/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/q0tzly/auto-oss/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/q0tzly/auto-oss/compare/v0.1.3...v0.1.5
 [0.1.3]: https://github.com/q0tzly/auto-oss/compare/v0.1.2...v0.1.3
