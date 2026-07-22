@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn catches_empty_reproduction_string() {
         let b = block(
-            "scope: bug-fix\nfeedback: text\nagent:\n  backend: human\nhuman_reviewed: true\nreproduction: \"\"\n",
+            "scope: bug-fix\nfeedback: text\nagent:\n  backend: human\nhuman_reviewed: true\nreproduction: \"\"\ngates:\n  test: pass\n",
         );
         let failures = check(&test_policy(), &b, 10);
         assert_eq!(failures.len(), 1);
@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn catches_whitespace_only_reproduction() {
         let b = block(
-            "scope: bug-fix\nfeedback: text\nagent:\n  backend: human\nhuman_reviewed: true\nreproduction: \"   \"\n",
+            "scope: bug-fix\nfeedback: text\nagent:\n  backend: human\nhuman_reviewed: true\nreproduction: \"   \"\ngates:\n  test: pass\n",
         );
         let failures = check(&test_policy(), &b, 10);
         assert_eq!(failures.len(), 1);
