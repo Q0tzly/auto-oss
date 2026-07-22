@@ -131,6 +131,15 @@ impl RunTracker {
     }
 }
 
+impl Drop for RunTracker {
+    fn drop(&mut self) {
+        if is_terminal(&self.state.phase) {
+            let path = PathBuf::from(&self.state.workdir);
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
 const TERMINAL_PHASES: [&str; 5] = [
     "submitted-pr",
     "submitted-issue",
